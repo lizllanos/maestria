@@ -1,5 +1,10 @@
  
 # Proyecto Analítica Fútbol -----------------------------------------------
+
+# Lizeth Llanos y Diego Agudelo
+# Septiembre 2019
+# Script para proyecto de Análisis Exploratorio de datos
+
 # Cargar librerías
 options(stringsAsFactors = F)
 
@@ -7,9 +12,6 @@ library(dplyr)
 library(tidyverse)
 library(purrr)
 
-# Lizeth Llanos y Diego Agudelo
-# Septiembre 2019
-# Script para proyecto de Análisis Exploratorio de datos
 
 #Configurar directorio de trabajo
 setwd("C:/Users/lllanos/Dropbox/ICESI/Semestre I/Análisis exploratorio de datos/Proyecto_grupal")
@@ -112,3 +114,41 @@ data_away = data.frame(home=0, goals=data_s2_sel$ftag,
                merge(.,pointam_19, by.x = "team" , by.y = "awayteam") %>% 
                merge(.,goalam_18, by.x = "team" , by.y = "awayteam") %>% 
                merge(.,goalam_19, by.x = "team" , by.y = "awayteam")
+
+epl = rbind(data_away, data_home)
+
+
+# Análisis exploratorio ---------------------------------------------------
+
+#Variable respuesta: goals
+my_post_theme=
+  theme_minimal() +
+  theme(axis.text.x = element_text(face="bold", color="#666666", 
+                                   size=10, margin = margin(t = -5)),
+        axis.title = element_text(color="black", face="bold",size=12),
+        plot.title = element_text(color="black", face="bold", size=14),
+        axis.text.y = element_text(face="bold", color="#666666", 
+                                   size=10),
+        legend.text=element_text(size=12),
+        legend.title=element_text(size=13),
+        legend.key=element_blank(),
+        axis.ticks.length=unit(0, "cm"))
+
+
+# Gráfica de ajuste de los goles a una distribución poisson
+  epl %>% group_by(goals) %>% summarize(actual=n()/nrow(.)) %>% 
+    mutate(pred=dpois(0:max(epl$goals), 
+                      mean(epl$goals))) %>% 
+                                                                
+  ggplot(aes(x=as.factor(goals))) + 
+  geom_bar(aes(y=actual, fill="Observado"), stat="identity",position="dodge") +
+   geom_line(aes( y = pred,group = 1, color="Estimado (Poisson)"),size=1.25)  +
+   scale_fill_manual(values=c("#20B2AA"), name = " ") +
+   scale_color_manual(values=c("#CD5C5C"),name=" ")  +
+  ggtitle("Número de goles por partido (Temporada Liga Premier 2018/19)")  + 
+    xlab("Goles por partido") + ylab("Porcentaje de partidos") +
+  my_post_theme
+
+
+mean(epl$goals)
+var(epl$goals)
