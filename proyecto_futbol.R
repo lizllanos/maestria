@@ -23,7 +23,7 @@ data_s2 = read.csv("season-1819_csv.csv", header = T, stringsAsFactors = F)
 names(data_s1) = tolower(names(data_s1))
 names(data_s2) = tolower(names(data_s2))
 
-var_sel = c("fthg", "ftag","hometeam","awayteam", "b365h","b365d","b365a",
+var_sel = c("date","fthg", "ftag","hometeam","awayteam", "b365h","b365d","b365a",
             "whh","whd","wha","hst","ast","ftr")
 
 sel_1 = which(names(data_s1) %in% var_sel)
@@ -50,8 +50,6 @@ hstm_18 = data_s1_sel %>%  mutate(hometeam = replace(hometeam,which(hometeam %in
 
 astm_18 = data_s1_sel %>% mutate(awayteam = replace(awayteam,which(awayteam %in% desc), "desc")) %>% 
   group_by(awayteam) %>% summarise(stm_18 = mean(ast)) %>% rbind(.,cbind(awayteam = asc, .[which(.$awayteam=="desc"),2]) )
-
-
 
 # Calculo del promedio de remates de la temporada actual s2 2019
 hstm_19 = data_s2_sel %>% group_by(hometeam) %>% summarise(stm_19 = mean(hst))
@@ -90,7 +88,7 @@ goalhm_19 = data_s2_sel %>% group_by(hometeam) %>% summarise(goal_19 = mean(fthg
 goalam_19 = data_s2_sel %>% group_by(awayteam) %>% summarise(goal_19 = mean(ftag))
 
 # Construcción de la base de datos con las variables calculadas
-data_home = data.frame(home=1, goals=data_s2_sel$fthg,
+data_home = data.frame(date =data_s2_sel$date, home=1, goals=data_s2_sel$fthg,
                team=data_s2_sel$hometeam,
                opponent=data_s2_sel$awayteam, 
                whw = data_s2_sel$whh, whd = data_s2_sel$whd,
@@ -103,7 +101,7 @@ data_home = data.frame(home=1, goals=data_s2_sel$fthg,
                merge(.,goalhm_19, by.x = "team" , by.y = "hometeam")
 
 
-data_away = data.frame(home=0, goals=data_s2_sel$ftag,
+data_away = data.frame(date =data_s2_sel$date,home=0, goals=data_s2_sel$ftag,
                team=data_s2_sel$awayteam,
                opponent=data_s2_sel$hometeam,
                whw = data_s2_sel$wha, whd = data_s2_sel$whd,
@@ -115,7 +113,12 @@ data_away = data.frame(home=0, goals=data_s2_sel$ftag,
                merge(.,goalam_18, by.x = "team" , by.y = "awayteam") %>% 
                merge(.,goalam_19, by.x = "team" , by.y = "awayteam")
 
-epl = rbind(data_away, data_home)
+epl = rbind(data_away, data_home) %>% arrange(.,date,team)
+
+
+ph = data_s2_sel %>% group_by(team =hometeam) %>% summarise(point = sum(pointh))
+pa = data_s2_sel %>% group_by(team =awayteam) %>% summarise(point = sum(pointa))
+merge(ph,pa, by = "team") %>% mutate(sum = point.x+point.y) %>% arrange(.,desc(sum))
 
 
 # Análisis exploratorio ---------------------------------------------------
@@ -139,16 +142,17 @@ my_post_theme=
   epl %>% group_by(goals) %>% summarize(actual=n()/nrow(.)) %>% 
     mutate(pred=dpois(0:max(epl$goals), 
                       mean(epl$goals))) %>% 
-                                                                
   ggplot(aes(x=as.factor(goals))) + 
   geom_bar(aes(y=actual, fill="Observado"), stat="identity",position="dodge") +
-   geom_line(aes( y = pred,group = 1, color="Estimado (Poisson)"),size=1.25)  +
-   scale_fill_manual(values=c("#20B2AA"), name = " ") +
-   scale_color_manual(values=c("#CD5C5C"),name=" ")  +
+  geom_line(aes( y = pred,group = 1, color="Estimado (Poisson)"),size=1.25)  +
+  scale_fill_manual(values=c("#20B2AA"), name = " ") +
+  scale_color_manual(values=c("#CD5C5C"),name=" ")  +
   ggtitle("Número de goles por partido (Temporada Liga Premier 2018/19)")  + 
-    xlab("Goles por partido") + ylab("Porcentaje de partidos") +
+  xlab("Goles por partido") + ylab("Porcentaje de partidos") +
   my_post_theme
 
 
 mean(epl$goals)
 var(epl$goals)
+
+cor(epl$goals , epl$stm_18)
