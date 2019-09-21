@@ -52,8 +52,8 @@ astm_18 = data_s1_sel %>% mutate(awayteam = replace(awayteam,which(awayteam %in%
   group_by(awayteam) %>% summarise(stm_18 = mean(ast)) %>% rbind(.,cbind(awayteam = asc, .[which(.$awayteam=="desc"),2]) )
 
 # Calculo del promedio de remates de la temporada actual s2 2019
-hstm_19 = data_s2_sel %>% group_by(hometeam) %>% summarise(stm_19 = mean(hst))
-astm_19 = data_s2_sel %>% group_by(awayteam) %>% summarise(stm_19 = mean(ast))
+# hstm_19 = data_s2_sel %>% group_by(hometeam) %>% summarise(stm_19 = mean(hst))
+# astm_19 = data_s2_sel %>% group_by(awayteam) %>% summarise(stm_19 = mean(ast))
 
 # Puntos promedio temp anterior s1 2018
 
@@ -71,8 +71,8 @@ pointam_18 = data_s1_sel %>% mutate(awayteam = replace(awayteam,which(awayteam %
 data_s2_sel$pointh =  ifelse(data_s2_sel$ftr == "H",3, ifelse( data_s2_sel$ftr == "D",1,0))
 data_s2_sel$pointa =  ifelse(data_s2_sel$ftr == "A",3, ifelse( data_s2_sel$ftr == "D",1,0))
 
-pointhm_19 = data_s2_sel %>% group_by(hometeam) %>% summarise(point_19 = mean(pointh))
-pointam_19 = data_s2_sel %>% group_by(awayteam) %>% summarise(point_19 = mean(pointa))
+# pointhm_19 = data_s2_sel %>% group_by(hometeam) %>% summarise(point_19 = mean(pointh))
+# pointam_19 = data_s2_sel %>% group_by(awayteam) %>% summarise(point_19 = mean(pointa))
 
 
 # Goles promedio temp anterior s1 2018
@@ -84,38 +84,53 @@ goalam_18 = data_s1_sel %>% mutate(awayteam = replace(awayteam,which(awayteam %i
 
 # Goles promedio temp actual s2 2019
 
-goalhm_19 = data_s2_sel %>% group_by(hometeam) %>% summarise(goal_19 = mean(fthg))
-goalam_19 = data_s2_sel %>% group_by(awayteam) %>% summarise(goal_19 = mean(ftag))
+# goalhm_19 = data_s2_sel %>% group_by(hometeam) %>% summarise(goal_19 = mean(fthg))
+# goalam_19 = data_s2_sel %>% group_by(awayteam) %>% summarise(goal_19 = mean(ftag))
+
 
 # Construcción de la base de datos con las variables calculadas
 data_home = data.frame(date =data_s2_sel$date, home=1, goals=data_s2_sel$fthg,
                team=data_s2_sel$hometeam,
                opponent=data_s2_sel$awayteam, 
                whw = data_s2_sel$whh, whd = data_s2_sel$whd,
-               b365w = data_s2_sel$b365h, b365d = data_s2_sel$b365d) %>%
+               b365w = data_s2_sel$b365h, b365d = data_s2_sel$b365d, point_19 = data_s2_sel$pointh,
+               stm_19 = data_s2_sel$hst ) %>%
                merge(.,hstm_18, by.x = "team" , by.y = "hometeam") %>%
-               merge(.,hstm_19, by.x = "team" , by.y = "hometeam") %>% 
+               #merge(.,hstm_19, by.x = "team" , by.y = "hometeam") %>% 
                merge(.,pointhm_18, by.x = "team" , by.y = "hometeam") %>% 
-               merge(.,pointhm_19, by.x = "team" , by.y = "hometeam") %>% 
-               merge(.,goalhm_18, by.x = "team" , by.y = "hometeam") %>% 
-               merge(.,goalhm_19, by.x = "team" , by.y = "hometeam")
+              # merge(.,pointhm_19, by.x = "team" , by.y = "hometeam") %>% 
+               merge(.,goalhm_18, by.x = "team" , by.y = "hometeam")  
+               #merge(.,goalhm_19, by.x = "team" , by.y = "hometeam")
 
 
 data_away = data.frame(date =data_s2_sel$date,home=0, goals=data_s2_sel$ftag,
                team=data_s2_sel$awayteam,
                opponent=data_s2_sel$hometeam,
                whw = data_s2_sel$wha, whd = data_s2_sel$whd,
-               b365w = data_s2_sel$b365a, b365d = data_s2_sel$b365d) %>% 
+               b365w = data_s2_sel$b365a, b365d = data_s2_sel$b365d, point_19 = data_s2_sel$pointa,
+               stm_19 = data_s2_sel$ast) %>% 
                merge(.,astm_18, by.x = "team" , by.y = "awayteam") %>% 
-               merge(.,astm_19, by.x = "team" , by.y = "awayteam") %>% 
+               #merge(.,astm_19, by.x = "team" , by.y = "awayteam") %>% 
                merge(.,pointam_18, by.x = "team" , by.y = "awayteam") %>% 
-               merge(.,pointam_19, by.x = "team" , by.y = "awayteam") %>% 
-               merge(.,goalam_18, by.x = "team" , by.y = "awayteam") %>% 
-               merge(.,goalam_19, by.x = "team" , by.y = "awayteam")
+              # merge(.,pointam_19, by.x = "team" , by.y = "awayteam") %>% 
+               merge(.,goalam_18, by.x = "team" , by.y = "awayteam") 
+               #merge(.,goalam_19, by.x = "team" , by.y = "awayteam")
 
-epl = rbind(data_away, data_home) %>% arrange(.,date,team)
+epl = rbind(data_away, data_home) %>% arrange(.,date)%>% arrange(.,team)
 
+epl$date = as.Date(epl$date, "%d/%m/%Y")
 
+epl = epl %>%  arrange(.,date)%>% arrange(.,team) %>% 
+  #Creación del promedio de goles acumulado para s2 2019
+ group_by(team)%>% arrange(.,date)  %>% mutate(goalm_19=cumsum(goals)/seq_along(goals))%>% 
+  arrange(.,date) %>% arrange(.,team)%>% mutate(goalm_19=c(NA,goalm_19[-1])) %>% 
+  #Creación del promedio de puntos acumulado para s2 2019
+  group_by(team)%>% arrange(.,date)  %>% mutate(pointm_19=cumsum(point_19)/seq_along(point_19))%>% 
+  arrange(.,date) %>% arrange(.,team)%>% mutate(pointm_19=c(0,pointm_19[-1])) %>% 
+  #Creación del promedio de remates acumulado para s2 2019
+  group_by(team)%>% arrange(.,date)  %>% mutate(stmc_19=cumsum(stm_19)/seq_along(stm_19))%>% 
+  arrange(.,date) %>% arrange(.,team)%>% mutate(stmc_19=c(0,stmc_19[-1])) 
+  
 ph = data_s2_sel %>% group_by(team =hometeam) %>% summarise(point = sum(pointh))
 pa = data_s2_sel %>% group_by(team =awayteam) %>% summarise(point = sum(pointa))
 merge(ph,pa, by = "team") %>% mutate(sum = point.x+point.y) %>% arrange(.,desc(sum))
@@ -155,4 +170,4 @@ my_post_theme=
 mean(epl$goals)
 var(epl$goals)
 
-cor(epl$goals , epl$stm_18)
+cor(epl$goals , epl$stmc_19)
