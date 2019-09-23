@@ -23,8 +23,8 @@ data_s2 = read.csv("season-1819_csv.csv", header = T, stringsAsFactors = F)
 names(data_s1) = tolower(names(data_s1))
 names(data_s2) = tolower(names(data_s2))
 
-var_sel = c("date","fthg", "ftag","hometeam","awayteam", "b365h","b365d","b365a",
-            "whh","whd","wha","hst","ast","ftr")
+var_sel = c("date","fthg", "ftag","hometeam","awayteam", "b365h","b365a",
+            "whh","wha","hst","ast", "hs", "as","ftr", "hc", "ac","hy", "ay" ,"hr", "ar", "hc", "ac")
 
 sel_1 = which(names(data_s1) %in% var_sel)
 sel_2 = which(names(data_s2) %in% var_sel)
@@ -89,54 +89,51 @@ goalam_18 = data_s1_sel %>% mutate(awayteam = replace(awayteam,which(awayteam %i
 
 
 # Construcción de la base de datos con las variables calculadas
-data_home = data.frame(date =data_s2_sel$date, home=1, goals=data_s2_sel$fthg,
-               team=data_s2_sel$hometeam,
-               opponent=data_s2_sel$awayteam, 
-               whw = data_s2_sel$whh, whd = data_s2_sel$whd,
-               b365w = data_s2_sel$b365h, b365d = data_s2_sel$b365d, point_19 = data_s2_sel$pointh,
+data_home = data.frame(date =data_s2_sel$date, home="Local", 
+               team=data_s2_sel$hometeam, goalt=data_s2_sel$fthg,
+               opponent=data_s2_sel$awayteam, goalo=data_s2_sel$ftag,
+               point_19 = data_s2_sel$pointh, ts = data_s2_sel$hs, tr = data_s2_sel$hr, 
+               ty = data_s2_sel$hy, tc = data_s2_sel$hc,
+               b365w = data_s2_sel$b365h,whw = data_s2_sel$whh,
                stm_19 = data_s2_sel$hst ) %>%
                merge(.,hstm_18, by.x = "team" , by.y = "hometeam") %>%
-               #merge(.,hstm_19, by.x = "team" , by.y = "hometeam") %>% 
                merge(.,pointhm_18, by.x = "team" , by.y = "hometeam") %>% 
-              # merge(.,pointhm_19, by.x = "team" , by.y = "hometeam") %>% 
-               merge(.,goalhm_18, by.x = "team" , by.y = "hometeam")  
-               #merge(.,goalhm_19, by.x = "team" , by.y = "hometeam")
+               merge(.,goalhm_18, by.x = "team" , by.y = "hometeam") 
 
-
-data_away = data.frame(date =data_s2_sel$date,home=0, goals=data_s2_sel$ftag,
-               team=data_s2_sel$awayteam,
-               opponent=data_s2_sel$hometeam,
-               whw = data_s2_sel$wha, whd = data_s2_sel$whd,
-               b365w = data_s2_sel$b365a, b365d = data_s2_sel$b365d, point_19 = data_s2_sel$pointa,
+data_away = data.frame(date =data_s2_sel$date, home="Visitante",
+               team=data_s2_sel$awayteam, goalt=data_s2_sel$ftag,
+               opponent=data_s2_sel$hometeam, goalo=data_s2_sel$fthg,
+               point_19 = data_s2_sel$pointa, ts = data_s2_sel$as, tr = data_s2_sel$ar, 
+               ty = data_s2_sel$ay, tc = data_s2_sel$ac,
+               b365w = data_s2_sel$b365a, whw = data_s2_sel$wha, 
                stm_19 = data_s2_sel$ast) %>% 
                merge(.,astm_18, by.x = "team" , by.y = "awayteam") %>% 
-               #merge(.,astm_19, by.x = "team" , by.y = "awayteam") %>% 
                merge(.,pointam_18, by.x = "team" , by.y = "awayteam") %>% 
-              # merge(.,pointam_19, by.x = "team" , by.y = "awayteam") %>% 
                merge(.,goalam_18, by.x = "team" , by.y = "awayteam") 
-               #merge(.,goalam_19, by.x = "team" , by.y = "awayteam")
 
-epl = rbind(data_away, data_home) %>% arrange(.,date)%>% arrange(.,team)
-
+epl = rbind(data_away, data_home) 
 epl$date = as.Date(epl$date, "%d/%m/%Y")
+epl$home = as.factor(epl$home)
 
 epl = epl %>%  arrange(.,date)%>% arrange(.,team) %>% 
   #Creación del promedio de goles acumulado para s2 2019
- group_by(team)%>% arrange(.,date)  %>% mutate(goalm_19=cumsum(goals)/seq_along(goals))%>% 
-  arrange(.,date) %>% arrange(.,team)%>% mutate(goalm_19=c(NA,goalm_19[-1])) %>% 
+  group_by(team)%>% arrange(.,date)  %>% mutate(goaltm_19=cumsum(goalt)/seq_along(goalt))%>% 
+  arrange(.,date) %>% arrange(.,team)%>% mutate(goaltm_19=c(NA,goaltm_19[-n()])) %>% 
+  
+  group_by(team)%>% arrange(.,date)  %>% mutate(goalom_19=cumsum(goalo)/seq_along(goalo))%>% 
+  arrange(.,date) %>% arrange(.,team)%>% mutate(goalom_19=c(NA,goalom_19[-n()])) %>% 
+  
   #Creación del promedio de puntos acumulado para s2 2019
   group_by(team)%>% arrange(.,date)  %>% mutate(pointm_19=cumsum(point_19)/seq_along(point_19))%>% 
-  arrange(.,date) %>% arrange(.,team)%>% mutate(pointm_19=c(0,pointm_19[-1])) %>% 
+  arrange(.,date) %>% arrange(.,team)%>% mutate(pointm_19=c(NA,pointm_19[-n()])) %>% 
   #Creación del promedio de remates acumulado para s2 2019
   group_by(team)%>% arrange(.,date)  %>% mutate(stmc_19=cumsum(stm_19)/seq_along(stm_19))%>% 
-  arrange(.,date) %>% arrange(.,team)%>% mutate(stmc_19=c(0,stmc_19[-1])) 
+  arrange(.,date) %>% arrange(.,team)%>% mutate(stmc_19=c(NA,stmc_19[-n()])) 
   
-ph = data_s2_sel %>% group_by(team =hometeam) %>% summarise(point = sum(pointh))
-pa = data_s2_sel %>% group_by(team =awayteam) %>% summarise(point = sum(pointa))
-merge(ph,pa, by = "team") %>% mutate(sum = point.x+point.y) %>% arrange(.,desc(sum))
 
 
-# Análisis exploratorio ---------------------------------------------------
+
+# Pregunta 1: Distribución Poisson ----------------------------------------
 
 #Variable respuesta: goals
 my_post_theme=
@@ -154,10 +151,10 @@ my_post_theme=
 
 
 # Gráfica de ajuste de los goles a una distribución poisson
-  epl %>% group_by(goals) %>% summarize(actual=n()/nrow(.)) %>% 
-    mutate(pred=dpois(0:max(epl$goals), 
-                      mean(epl$goals))) %>% 
-  ggplot(aes(x=as.factor(goals))) + 
+epl %>% group_by(goalt) %>% summarize(actual=n()/nrow(.)) %>% 
+  mutate(pred=dpois(0:max(epl$goalt), 
+                    mean(epl$goalt))) %>% 
+  ggplot(aes(x=as.factor(goalt))) + 
   geom_bar(aes(y=actual, fill="Observado"), stat="identity",position="dodge") +
   geom_line(aes( y = pred,group = 1, color="Estimado (Poisson)"),size=1.25)  +
   scale_fill_manual(values=c("#20B2AA"), name = " ") +
@@ -167,7 +164,46 @@ my_post_theme=
   my_post_theme
 
 
-mean(epl$goals)
+mean(epl$goalt)
 var(epl$goals)
 
-cor(epl$goals , epl$stmc_19)
+summary(fitdist(epl$goalt,"nbinom"))
+summary(fitdist(epl$goalt,"pois"))
+
+# Pregunta 2: Estadística de la temporada actual --------------------------
+
+ph = data_s2_sel %>% group_by(team =hometeam) %>% summarise(point = sum(pointh))
+pa = data_s2_sel %>% group_by(team =awayteam) %>% summarise(point = sum(pointa))
+merge(ph,pa, by = "team") %>% mutate(sum = point.x+point.y) %>% arrange(.,desc(sum))
+
+
+# goals per teams (e.g. Chelsea & Sunderland)
+
+xx=inner_join(epl %>% filter(team %in% c("Man City","Huddersfield")) %>% group_by(team,home,goalt) %>% summarize(num_games=n()),
+epl %>% group_by(team) %>% summarize(tot_games=n()/2),
+by=c("team")) %>% mutate(actual=num_games/tot_games)  %>%  complete(home,goalt, fill = list(actual = 0)) %>% 
+  complete(nesting(team,home), fill = list(actual = 0))
+
+ggplot(aes(x=as.factor(goalt),fill=team)) + 
+  geom_bar(aes(y = actual),stat="identity",position="dodge") +
+ # geom_col(position = position_dodge2(width = 0.9, preserve = "single"))+
+  facet_grid(home ~ .) +
+
+
+  scale_fill_manual(values=c("#034694", "cornflowerblue"), 
+                    name = " ",
+                    
+                    guide = guide_legend(override.aes = list(linetype = c(0,1)))) +
+    
+  ggtitle("Goles por partido (Temporada 2018/19)")  + xlab("Goles") + ylab("Porcentaje de partidos") +
+  my_post_theme +
+  theme(strip.text.y = element_text(size=12, face="bold"),
+        strip.background = element_rect(colour="black", fill="gray")) 
+
+# Pregunta 3: Selección de posibles predictores ---------------------------
+v_class = unlist(lapply(sapply(epl,class), '[[', 1))
+epl_cual = epl [ ,which(v_class== "character" | v_class== "factor")]
+epl_num = epl [ ,which(v_class != "character" & v_class != "factor")[-1]]
+
+apply(epl_num,2, function(col)cor(col, epl_num$goalt,use = "complete.obs"))
+
