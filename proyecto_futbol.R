@@ -23,7 +23,7 @@ data_s2 = read.csv("season-1819_csv.csv", header = T, stringsAsFactors = F)
 names(data_s1) = tolower(names(data_s1))
 names(data_s2) = tolower(names(data_s2))
 
-var_sel = c("date","fthg", "ftag","hometeam","awayteam", "b365h","b365a",
+var_sel = c("date","fthg", "ftag","hometeam","awayteam", "b365h","b365a", "hf","af",
             "whh","wha","hst","ast", "hs", "as","ftr", "hc", "ac","hy", "ay" ,"hr", "ar", "hc", "ac")
 
 sel_1 = which(names(data_s1) %in% var_sel)
@@ -93,9 +93,9 @@ data_home = data.frame(date =data_s2_sel$date, home="Local",
                team=data_s2_sel$hometeam, goalt=data_s2_sel$fthg,
                opponent=data_s2_sel$awayteam, goalo=data_s2_sel$ftag,
                point_19 = data_s2_sel$pointh, ts = data_s2_sel$hs, tr = data_s2_sel$hr, 
-               ty = data_s2_sel$hy, tc = data_s2_sel$hc,
-               b365w = data_s2_sel$b365h,whw = data_s2_sel$whh,
-               stm_19 = data_s2_sel$hst ) %>%
+               ty = data_s2_sel$hy, tc = data_s2_sel$hc, tf = data_s2_sel$hf,
+               b365t = data_s2_sel$b365h,wht = data_s2_sel$whh,b365o = data_s2_sel$b365a,who = data_s2_sel$wha,
+               st_19 = data_s2_sel$hst ) %>%
                merge(.,hstm_18, by.x = "team" , by.y = "hometeam") %>%
                merge(.,pointhm_18, by.x = "team" , by.y = "hometeam") %>% 
                merge(.,goalhm_18, by.x = "team" , by.y = "hometeam") 
@@ -104,9 +104,9 @@ data_away = data.frame(date =data_s2_sel$date, home="Visitante",
                team=data_s2_sel$awayteam, goalt=data_s2_sel$ftag,
                opponent=data_s2_sel$hometeam, goalo=data_s2_sel$fthg,
                point_19 = data_s2_sel$pointa, ts = data_s2_sel$as, tr = data_s2_sel$ar, 
-               ty = data_s2_sel$ay, tc = data_s2_sel$ac,
-               b365w = data_s2_sel$b365a, whw = data_s2_sel$wha, 
-               stm_19 = data_s2_sel$ast) %>% 
+               ty = data_s2_sel$ay, tc = data_s2_sel$ac, tf = data_s2_sel$af,
+               b365t = data_s2_sel$b365a, wht = data_s2_sel$wha, b365o = data_s2_sel$b365h,who = data_s2_sel$whh,
+               st_19 = data_s2_sel$ast) %>% 
                merge(.,astm_18, by.x = "team" , by.y = "awayteam") %>% 
                merge(.,pointam_18, by.x = "team" , by.y = "awayteam") %>% 
                merge(.,goalam_18, by.x = "team" , by.y = "awayteam") 
@@ -127,8 +127,8 @@ epl = epl %>%  arrange(.,date)%>% arrange(.,team) %>%
   group_by(team)%>% arrange(.,date)  %>% mutate(pointm_19=cumsum(point_19)/seq_along(point_19))%>% 
   arrange(.,date) %>% arrange(.,team)%>% mutate(pointm_19=c(NA,pointm_19[-n()])) %>% 
   #Creación del promedio de remates acumulado para s2 2019
-  group_by(team)%>% arrange(.,date)  %>% mutate(stmc_19=cumsum(stm_19)/seq_along(stm_19))%>% 
-  arrange(.,date) %>% arrange(.,team)%>% mutate(stmc_19=c(NA,stmc_19[-n()])) 
+  group_by(team)%>% arrange(.,date)  %>% mutate(stm_19=cumsum(st_19)/seq_along(st_19))%>% 
+  arrange(.,date) %>% arrange(.,team)%>% mutate(stm_19=c(NA,stm_19[-n()])) 
   
 
 
@@ -165,12 +165,52 @@ epl %>% group_by(goalt) %>% summarize(actual=n()/nrow(.)) %>%
 
 
 mean(epl$goalt)
-var(epl$goals)
+var(epl$goalt)
 
 summary(fitdist(epl$goalt,"nbinom"))
 summary(fitdist(epl$goalt,"pois"))
 
+library(vcd)
+gf<-goodfit(epl$goalt,type= "poisson",method= "MinChisq")
+summary(gf)
+plot(gf)
+
 # Pregunta 2: Estadística de la temporada actual --------------------------
+
+# Promedio de goles a favor y en contra
+# Promedio de remates
+# Promedio de remates a puerta
+# Tiros de esquina
+# Faltas
+# Tarjetas amarillas y rojas
+
+st_gen = epl %>% group_by(home) %>% summarise(Goles_a_favor= mean(goalt),Goles_en_contra= mean(goalo),
+                                      Remates = mean(ts), Remates_a_puerta = mean(st_19),
+                                      Tiros_esquina = mean(tc), Faltas = mean(tf), Tarjetas_amarillas = mean(ty),
+                                      Tarjetas_rojas = mean(tr) )
+
+st_by_team = epl %>% group_by(home,team) %>% summarise(Goles_a_favor= mean(goalt),Goles_en_contra= mean(goalo),
+                                        Remates = mean(ts), Remates_a_puerta = mean(st_19),
+                                        Tiros_esquina = mean(tc), Faltas = mean(tf), Tarjetas_amarillas = mean(ty),
+                                        Tarjetas_rojas = mean(tr) ) %>% gather("stat","mean",-home,-team)
+
+x11()
+ggplot(st_by_team, aes(x = home, y = team, fill = mean)) + geom_tile() +
+  scale_fill_gradient2(low = "red", high = "green", mid = "black") +facet_grid(~stat,scales = 'free')
+
+
+
+lapply(unique(st_by_team$stat), function(cc) {
+  gg <- ggplot(filter(st_by_team,stat==cc),
+               aes(x=home, y=team, fill=mean))+
+     geom_tile() +
+    scale_fill_gradient2(low = "red", high = "green")
+  gg})-> cclist
+
+cclist[["ncol"]] <- 4
+library(gridExtra)
+do.call(grid.arrange, cclist)
+
 
 ph = data_s2_sel %>% group_by(team =hometeam) %>% summarise(point = sum(pointh))
 pa = data_s2_sel %>% group_by(team =awayteam) %>% summarise(point = sum(pointa))
