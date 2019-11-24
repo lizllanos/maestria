@@ -23,17 +23,11 @@ data_s2 = read.csv("season-1819_csv.csv", header = T, stringsAsFactors = F)
 names(data_s1) = tolower(names(data_s1))
 names(data_s2) = tolower(names(data_s2))
 
-var_sel = c("date","fthg", "ftag","hometeam","awayteam", "b365h","b365a", "hf","af",
-            "whh","wha","hst","ast", "hs", "as","ftr", "hc", "ac","hy", "ay" ,"hr", "ar", "hc", "ac")
-
-sel_1 = which(names(data_s1) %in% var_sel)
-sel_2 = which(names(data_s2) %in% var_sel)
-
 
 # Selección de variables para construir las posibles variables res --------
 
-data_s1_sel = data_s1[,sel_1]
-data_s2_sel = data_s2[,sel_2]
+data_s1_sel = data_s1
+data_s2_sel = data_s2
 
 # Identificar equipos que descendieron en S1 y los equipos nuevos en S2
 `%notin%` <- Negate(`%in%`)
@@ -51,9 +45,6 @@ hstm_18 = data_s1_sel %>%  mutate(hometeam = replace(hometeam,which(hometeam %in
 astm_18 = data_s1_sel %>% mutate(awayteam = replace(awayteam,which(awayteam %in% desc), "desc")) %>% 
   group_by(awayteam) %>% summarise(stm_18 = mean(ast)) %>% rbind(.,cbind(awayteam = asc, .[which(.$awayteam=="desc"),2]) )
 
-# Calculo del promedio de remates de la temporada actual s2 2019
-# hstm_19 = data_s2_sel %>% group_by(hometeam) %>% summarise(stm_19 = mean(hst))
-# astm_19 = data_s2_sel %>% group_by(awayteam) %>% summarise(stm_19 = mean(ast))
 
 # Puntos promedio temp anterior s1 2018
 
@@ -71,9 +62,6 @@ pointam_18 = data_s1_sel %>% mutate(awayteam = replace(awayteam,which(awayteam %
 data_s2_sel$pointh =  ifelse(data_s2_sel$ftr == "H",3, ifelse( data_s2_sel$ftr == "D",1,0))
 data_s2_sel$pointa =  ifelse(data_s2_sel$ftr == "A",3, ifelse( data_s2_sel$ftr == "D",1,0))
 
-# pointhm_19 = data_s2_sel %>% group_by(hometeam) %>% summarise(point_19 = mean(pointh))
-# pointam_19 = data_s2_sel %>% group_by(awayteam) %>% summarise(point_19 = mean(pointa))
-
 
 # Goles promedio temp anterior s1 2018
 goalhm_18 = data_s1_sel %>%  mutate(hometeam = replace(hometeam,which(hometeam %in% desc), "desc")) %>% 
@@ -81,11 +69,6 @@ goalhm_18 = data_s1_sel %>%  mutate(hometeam = replace(hometeam,which(hometeam %
 
 goalam_18 = data_s1_sel %>% mutate(awayteam = replace(awayteam,which(awayteam %in% desc), "desc")) %>% 
   group_by(awayteam) %>% summarise(goal_18 = mean(ftag)) %>% rbind(.,cbind(awayteam = asc, .[which(.$awayteam=="desc"),2]) )
-
-# Goles promedio temp actual s2 2019
-
-# goalhm_19 = data_s2_sel %>% group_by(hometeam) %>% summarise(goal_19 = mean(fthg))
-# goalam_19 = data_s2_sel %>% group_by(awayteam) %>% summarise(goal_19 = mean(ftag))
 
 
 # Construcción de la base de datos con las variables calculadas
@@ -175,6 +158,18 @@ gf<-goodfit(epl$goalt,type= "poisson",method= "MinChisq")
 summary(gf)
 plot(gf)
 
+
+epl %>% group_by(home, goalt) %>% summarize(actual=n()/nrow(.)) %>% 
+  mutate(pred=dpois(0:max(epl$goalt), 
+                    mean(epl$goalt))) %>% 
+  ggplot(aes(x=as.factor(goalt))) + 
+  geom_bar(aes(y=actual, fill=home), stat="identity",position="dodge") +
+  geom_line(aes( y = pred,group = home, color=home),size=1.25)  +
+  scale_fill_manual(values=c("#20B2AA"), name = " ") +
+  scale_color_manual(values=c("#CD5C5C"),name=" ")  +
+  ggtitle("Número de goles por partido (Temporada Liga Premier 2018/19)")  + 
+  xlab("Goles por partido") + ylab("Porcentaje de partidos") +
+  my_post_theme
 # Pregunta 2: Estadística de la temporada actual --------------------------
 
 # Promedio de goles a favor y en contra
@@ -219,10 +214,10 @@ merge(ph,pa, by = "team") %>% mutate(sum = point.x+point.y) %>% arrange(.,desc(s
 
 # goals per teams (e.g. Chelsea & Sunderland)
 
-xx=inner_join(epl %>% filter(team %in% c("Man City","Huddersfield")) %>% group_by(team,home,goalt) %>% summarize(num_games=n()),
+inner_join(epl %>% filter(team %in% c("Man City","Huddersfield")) %>% group_by(team,home,goalt) %>% summarize(num_games=n()),
 epl %>% group_by(team) %>% summarize(tot_games=n()/2),
 by=c("team")) %>% mutate(actual=num_games/tot_games)  %>%  complete(home,goalt, fill = list(actual = 0)) %>% 
-  complete(nesting(team,home), fill = list(actual = 0))
+  complete(nesting(team,home), fill = list(actual = 0)) %>% 
 
 ggplot(aes(x=as.factor(goalt),fill=team)) + 
   geom_bar(aes(y = actual),stat="identity",position="dodge") +
@@ -241,6 +236,14 @@ ggplot(aes(x=as.factor(goalt),fill=team)) +
         strip.background = element_rect(colour="black", fill="gray")) 
 
 # Pregunta 3: Selección de posibles predictores ---------------------------
+
+var_sel = c("date","fthg", "ftag","hometeam","awayteam", "b365h","b365a", "hf","af",
+            "whh","wha","hst","ast", "hs", "as","ftr", "hc", "ac","hy", "ay" ,"hr", "ar", "hc", "ac")
+
+sel_1 = which(names(data_s1) %in% var_sel)
+sel_2 = which(names(data_s2) %in% var_sel)
+
+
 v_class = unlist(lapply(sapply(epl,class), '[[', 1))
 epl_cual = epl [ ,which(v_class== "character" | v_class== "factor")]
 epl_num = epl [ ,which(v_class != "character" & v_class != "factor")[-1]]
