@@ -5,6 +5,8 @@ library(reshape2)
 library(ggplot2)
 library(caret)
 library(MASS)
+library(naivebayes)
+library(dplyr)
 
 # Lectura de datos --------------------------------------------------------
 setwd("C:/Users/lllanos/Dropbox/ICESI/Semestre I/Fundamentos de analítica I/Proyecto final")
@@ -17,9 +19,6 @@ str(data)
 sum(duplicated(data))
 
 names(data) = tolower(names(data))
-# Baseline
-data$tipo = as.character(data$tipo)
-table(data$ripo)/nrow(data)
 
 # Verificar datosNA
 summary(data) #La variable LargoHeader es la que más datos faltantes tiene
@@ -36,10 +35,14 @@ data_m = melt(data_num)
 ggplot(data_m, aes(variable, value))+geom_boxplot() + facet_wrap(~variable, scales = "free")
 
 
+# Baseline
+data$tipo = as.character(data$tipo)
+prop.table(table(data$tipo))
+
 # Modelo logistico --------------------------------------------------------
 # arreglar la codificación
 
-data_model = na.omit(data[, -c(1,4,5,7,8)])
+data_model = na.omit(data[, -c(1,4,5,7,8,20)])
 set.seed(500) 
 trainIndex <- createDataPartition(data_model$tipo, p = .75, list = FALSE, times = 1)
 length(trainIndex)
@@ -76,4 +79,33 @@ confusionMatrix(predictions, factor(churnTest$tipo))
 
 # Naives ------------------------------------------------------------------
 
+#install.packages("naivebayes")
 
+id= which(sapply(data_model,class)!="character")
+data_model_n = mutate_each(data_model, funs(as.double), id)
+
+tgrid1 = expand.grid(laplace=c(10, 7, 6, 5, 4.5, 4, 3.5, 3, 2, 1, 0.1, 0.01, 0.001, 0.0001, 0), 
+                     usekernel=c(FALSE), adjust=c(0))
+tgrid2 = expand.grid(laplace=c(10, 7, 6, 5, 4.5, 4, 3.5, 3, 2, 1, 0.1, 0.01, 0.001, 0.0001, 0), 
+                     usekernel=c(TRUE), adjust=c(1))
+tgrid = rbind(tgrid1, tgrid2)
+
+
+data_model %>%                           # Se va a trabajar sobre el dataset completo
+  filter(tipo == "0") %>%      # Sólo vamos a considerar los registros con el "LEAVE" en la variable objetivo
+  select_if(is.numeric) %>%         # Sólo nos interesan las variables numéricas
+  cor() %>%                         # obtenemos la matriz de correlaciones
+  corrplot::corrplot()    
+
+
+churnTrainX = churnTrain[,-14]
+set.seed(123) 
+model_nb5 <- train(churnTrainX, churnTrain$tipo,
+                   method = "naive_bayes", 
+                   tuneGrid=tgrid,
+                   trControl = trainControl)
+model_nb5
+model_nb5$bestTune
+
+predictions<-predict(object=model_nb5, churnTest)
+confusionMatrix(predictions, factor(churnTest$tipo))
