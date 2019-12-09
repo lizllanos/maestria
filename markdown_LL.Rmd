@@ -19,10 +19,15 @@ library(caret)
 library(MASS)
 library(naivebayes)
 library(dplyr)
+library(stringr)
+library(XML)
+library(RCurl)
 
 # Lectura de datos --------------------------------------------------------
 setwd("C:/Users/lllanos/Dropbox/ICESI/Semestre I/Fundamentos de analítica I/Proyecto final")
 data = read.csv("PF-02-SitiosMalignos.csv", stringsAsFactors = FALSE)
+
+names(data) = tolower(names(data))
 
 `%notin%` <- Negate(`%in%`)
 
@@ -49,9 +54,6 @@ dim(data)
 str(data)
 sum(duplicated(data))
 
-names(data) = tolower(names(data))
-
-
 ```
 
 ### 1.3 Recodificación de variables y eliminación de variables
@@ -59,48 +61,56 @@ names(data) = tolower(names(data))
 Con el fin de poder incluir las variables categóricas a los diferentes modelos se realiza una recodificación a la variable: País, Codificación y OS
 
 ```{r}
-# data$codificacion[data$codificacion %in% c("ISO-8859","iso-8859-1","ISO-8859-1","windows-1251","windows-1252")] <- "iso"
-# data$codificacion[data$codificacion %in% c("UTF-8","utf-8")] <- "utf-8"
-# data$codificacion[data$codificacion %in% c("None")] <- "none"
-# 
-# 
-# 
-# data$OS[grep("apache",data$OS,ignore.case =T,fixed=F )] <- "apache"
-# data$OS[grep("ats",data$OS,ignore.case =T,fixed=F )] <- "apache"
-# data$OS[grep("nginx",data$OS,ignore.case =T,fixed=F )] <- "nginx"
-# data$OS[grep("None",data$OS,ignore.case =T,fixed=F )] <- "none"
-# data$OS[grep("MICROSOFT-HTTPAPI",data$OS,ignore.case =T,fixed=F )] <- "microsoft-httpapi"
-# data$OS[grep("Microsoft-IIS",data$OS,ignore.case =T,fixed=F )] <- "microsoft-iis"
+data$codificacion[data$codificacion %in% c("ISO-8859","iso-8859-1","ISO-8859-1","windows-1251","windows-1252")] <- "iso"
+data$codificacion[data$codificacion %in% c("UTF-8","utf-8")] <- "utf-8"
+data$codificacion[data$codificacion %in% c("None")] <- "none"
 
+data$os[grep("apache",data$os,ignore.case =T,fixed=F )] <- "apache"
+data$os[grep("ats",data$os,ignore.case =T,fixed=F )] <- "apache"
+data$os[grep("nginx",data$os,ignore.case =T,fixed=F )] <- "nginx"
+data$os[grep("None",data$os,ignore.case =T,fixed=F )] <- "none"
+data$os[grep("MICROSOFT-HTTPAPI",data$os,ignore.case =T,fixed=F )] <- "microsoft-httpapi"
+data$os[grep("Microsoft-IIS",data$os,ignore.case =T,fixed=F )] <- "microsoft-iis"
+
+data$os[ data$os %notin% c("apache", "nginx","none","microsoft-httpapi","microsoft-iis") ] <- "none"
+
+url_main="https://laendercode.net/es/2-letter-list.html"
+theurl=getURL(url_main,.opts = list(ssl.verifypeer = FALSE))
+tables=readHTMLTable(theurl)[[1]][-1,]
+
+data$pais <- toupper(data$pais)
+data$pais[tolower(data$pais) %notin% tolower(tables$`ISO 3166 ALPHA-2`)]<-"none"
+table(data$pais)
 ```
-
 
 Las variables que no serán utilizadas en ninguno de los análisis son: URL y Estado
 
 ### 1.4 Verificación de datos faltantes
 
-Se identifican 2 variables que contienen datos faltantes: El tamaño del encabezado y 
+Se identifican 2 variables que contienen datos faltantes: El tamaño del encabezado, con  y Número de paquetes DNS  
+
 ```{r}
 # Verificar datosNA
-summary(data) #La variable LargoHeader es la que más datos faltantes tiene
 
 # table(data$pais)
-# table(data$os)
-# table(data$codificacion)
-data$largoheadermissing = as.character(ifelse(is.na(data$largoheader), 1, 0))
-#table(data$largoheadermissing)
+data$os = as.factor(data$os)
+data$codificacion = as.factor(data$codificacion)
+summary(data) #La variable LargoHeader es la que más datos faltantes tiene
 
+data$largoheadermissing = as.character(ifelse(is.na(data$largoheader), 1, 0))
 data$largoheader = ifelse(is.na(data$largoheader), 0, data$largoheader)
-#summary(data$largoheader)
 
 data$tipo = factor(data$tipo)
 
+data = data[which(is.na(data$numpaquetesdns)),]
 ```
 
 
-### 1.5 Análisis de datos anómalos
+### 1.5 Análisis exploratorio de los datos
 
+#### 1.5.1 Datos anómalos
 Para la identificación de registros anómalos se filtran las variables númericas y se procede a realizar un análisis gráfico mediante boxplot e histogramas
+
 ```{r}
 data_num = data[,which(sapply(data,class) %notin% c("character", "factor"))]
 data_m = melt(data_num)
@@ -110,16 +120,21 @@ ggplot(data_m, aes(value))+geom_histogram() + facet_wrap(~variable, scales = "fr
 
 # Análisis de datos atípicos
 
-atipicos = function(x){
+atipicos = function(x,p){
   qnt<-quantile(x, probs=c(.25, .75), na.rm = T)
- H <-0.5 * IQR(x, na.rm = T)
+ H <-p * IQR(x, na.rm = T)
  x2<-ifelse(x> qnt[2]+H | x< qnt[1]-H ,1,0)
- 
+ return(sum(x2))
 }
+
+t_atipicos = cbind("Conteo Atipicos" = apply(na.omit(data_num), 2,atipicos,5),"% Atipicos" = apply(na.omit(data_num), 2,atipicos,5)/1781*100)
+
+t_atipicos[order(t_atipicos[,1])]
 ```
 
-En los gráficos boxplot e histogramas se identifican varios datos atípicos, los cuales presentan valores muy superiores a los registrados en las demás observaciones. Se deciden tener 2 set de datos: uno sin eliminar los datos atípicos (**data1**) y otro eliminando aquellas observaciones superiores a 3IQR (**data2**). De acuerdo a las características del modelo a ajustar se usará el data set correspondiente.
+En los gráficos boxplot e histogramas se identifican varios datos atípicos, los cuales presentan valores muy superiores a los registrados en las demás observaciones. Se deciden  otro eliminando aquellas observaciones superiores a 3IQR. De acuerdo a las características del modelo a ajustar se usará el data set correspondiente.
 
+#### 1.5.2 Análisis gráfico y descriptivo
 
 ## 2. Ajuste de modelos predictivos
 

@@ -48,7 +48,7 @@ train_qc$atipicosraz<-ifelse(data_num[,1]> qnt[2]+H | train_qc$saleprice< qnt[1]
 
 
 # Baseline
-prop.table(table(data$tipo))
+prop.table(table(data$tipo))*100
 
 # Modelo logistico --------------------------------------------------------
 # arreglar la codificación
@@ -58,11 +58,11 @@ set.seed(500)
 trainIndex <- createDataPartition(data_model$tipo, p = .75, list = FALSE, times = 1)
 length(trainIndex)
 
-churnTrain <- data_model[ trainIndex,]
-churnTest <-  data_model[-trainIndex,]
+webTrain <- data_model[ trainIndex,]
+webTest <-  data_model[-trainIndex,]
 
 set.seed(123) 
-model_logreg1 <- train(tipo~., churnTrain, 
+model_logreg1 <- train(tipo~., webTrain, 
                        method="glm", family="binomial",
                        trControl=trainControl(method="cv", number=5),
                        preProcess=c("center", "scale"))
@@ -83,8 +83,8 @@ model_stepBoth <- train(tipo ~., data = data_model,
 
 model_stepBoth$finalModel
 
-predictions<-predict(object=model_stepBoth, churnTest)
-confusionMatrix(predictions, factor(churnTest$tipo))
+predictions<-predict(object=model_stepBoth, webTest)
+confusionMatrix(predictions, factor(webTest$tipo))
 
 
 
@@ -109,14 +109,17 @@ data_model %>%                           # Se va a trabajar sobre el dataset com
   corrplot::corrplot()    
 
 
-churnTrainX = churnTrain[,-14]
+webTrainX = webTrain[,-14]
 set.seed(123) 
-model_nb5 <- train(churnTrainX, churnTrain$tipo,
+model_nb5 <- train(webTrainX, webTrain$tipo,
                    method = "naive_bayes", 
                    tuneGrid=tgrid,
                    trControl = trainControl)
 model_nb5
 model_nb5$bestTune
 
-predictions<-predict(object=model_nb5, churnTest)
-confusionMatrix(predictions, factor(churnTest$tipo))
+predictions<-predict(object=model_nb5, webTest)
+confusionMatrix(predictions, factor(webTest$tipo))
+
+
+
