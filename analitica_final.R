@@ -12,6 +12,7 @@ library(dplyr)
 setwd("C:/Users/lllanos/Dropbox/ICESI/Semestre I/Fundamentos de analítica I/Proyecto final")
 data = read.csv("PF-02-SitiosMalignos.csv", stringsAsFactors = FALSE)
 
+`%notin%` <- Negate(`%in%`)
 
 # Limpieza de datos -------------------------------------------------------
 dim(data)
@@ -23,20 +24,30 @@ names(data) = tolower(names(data))
 # Verificar datosNA
 summary(data) #La variable LargoHeader es la que más datos faltantes tiene
 
-data$largoheadermissing = ifelse(is.na(data$largoheader), 1, 0)
+data$largoheadermissing = as.character(ifelse(is.na(data$largoheader), 1, 0))
 table(data$largoheadermissing)
 
 data$largoheader = ifelse(is.na(data$largoheader), 0, data$largoheader)
 summary(data$largoheader)
 
-data_num = data[,which(sapply(data,class)!="character")]
+data$tipo = factor(data$tipo)
+
+data_num = data[,which(sapply(data,class) %notin% c("character", "factor"))]
 
 data_m = melt(data_num)
 ggplot(data_m, aes(variable, value))+geom_boxplot() + facet_wrap(~variable, scales = "free")
 
+x11()
+ggplot(data_m, aes(value))+geom_histogram() + facet_wrap(~variable, scales = "free")
+
+# Análisis de datos atípicos
+
+qnt<-quantile(data_num[,1], probs=c(.25, .75), na.rm = T)
+H <-0.5 * IQR(data_num[,1], na.rm = T)
+train_qc$atipicosraz<-ifelse(data_num[,1]> qnt[2]+H | train_qc$saleprice< qnt[1]-H ,1,0)
+
 
 # Baseline
-data$tipo = as.character(data$tipo)
 prop.table(table(data$tipo))
 
 # Modelo logistico --------------------------------------------------------

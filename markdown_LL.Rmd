@@ -1,0 +1,193 @@
+---
+title: "Proyecto final analítica"
+author: "Lizeth Llanos y Diego Agudelo"
+date: "12/8/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+
+```
+El objetivo de este trabajo es implementar los diferentes modelos con el fin de caracterizar y predecir la condición de las páginas web identificadas como benignas o malignas
+
+```{r, warning=FALSE, results=FALSE}
+library(reshape2)
+library(ggplot2)
+library(caret)
+library(MASS)
+library(naivebayes)
+library(dplyr)
+
+# Lectura de datos --------------------------------------------------------
+setwd("C:/Users/lllanos/Dropbox/ICESI/Semestre I/Fundamentos de analítica I/Proyecto final")
+data = read.csv("PF-02-SitiosMalignos.csv", stringsAsFactors = FALSE)
+
+`%notin%` <- Negate(`%in%`)
+
+```
+
+## 1. Limpieza de datos
+
+Para iniciar los análisis procedemos a realizar una limpieza a los datos que serán utilizados en el modelo.
+
+### 1.1 Baseline
+
+El baseline de los datos es la condición de benigno con un 87.87% 
+```{r, results=TRUE, echo=TRUE}
+# Baseline
+prop.table(table(data$tipo))*100
+
+```
+### 1.2 Duplicados 
+Se verifica la cantidad de registros y las variables del dataset, contamos con 1781 páginas web y 20 variables. También se verifica que no hayan registros duplicados
+
+```{r, echo=TRUE}
+# Limpieza de datos -------------------------------------------------------
+dim(data)
+str(data)
+sum(duplicated(data))
+
+names(data) = tolower(names(data))
+
+
+```
+
+### 1.3 Recodificación de variables y eliminación de variables
+
+Con el fin de poder incluir las variables categóricas a los diferentes modelos se realiza una recodificación a la variable: País, Codificación y OS
+
+```{r}
+# data$codificacion[data$codificacion %in% c("ISO-8859","iso-8859-1","ISO-8859-1","windows-1251","windows-1252")] <- "iso"
+# data$codificacion[data$codificacion %in% c("UTF-8","utf-8")] <- "utf-8"
+# data$codificacion[data$codificacion %in% c("None")] <- "none"
+# 
+# 
+# 
+# data$OS[grep("apache",data$OS,ignore.case =T,fixed=F )] <- "apache"
+# data$OS[grep("ats",data$OS,ignore.case =T,fixed=F )] <- "apache"
+# data$OS[grep("nginx",data$OS,ignore.case =T,fixed=F )] <- "nginx"
+# data$OS[grep("None",data$OS,ignore.case =T,fixed=F )] <- "none"
+# data$OS[grep("MICROSOFT-HTTPAPI",data$OS,ignore.case =T,fixed=F )] <- "microsoft-httpapi"
+# data$OS[grep("Microsoft-IIS",data$OS,ignore.case =T,fixed=F )] <- "microsoft-iis"
+
+```
+
+
+Las variables que no serán utilizadas en ninguno de los análisis son: URL y Estado
+
+### 1.4 Verificación de datos faltantes
+
+Se identifican 2 variables que contienen datos faltantes: El tamaño del encabezado y 
+```{r}
+# Verificar datosNA
+summary(data) #La variable LargoHeader es la que más datos faltantes tiene
+
+# table(data$pais)
+# table(data$os)
+# table(data$codificacion)
+data$largoheadermissing = as.character(ifelse(is.na(data$largoheader), 1, 0))
+#table(data$largoheadermissing)
+
+data$largoheader = ifelse(is.na(data$largoheader), 0, data$largoheader)
+#summary(data$largoheader)
+
+data$tipo = factor(data$tipo)
+
+```
+
+
+### 1.5 Análisis de datos anómalos
+
+Para la identificación de registros anómalos se filtran las variables númericas y se procede a realizar un análisis gráfico mediante boxplot e histogramas
+```{r}
+data_num = data[,which(sapply(data,class) %notin% c("character", "factor"))]
+data_m = melt(data_num)
+
+ggplot(data_m, aes(variable, value))+geom_boxplot() + facet_wrap(~variable, scales = "free")
+ggplot(data_m, aes(value))+geom_histogram() + facet_wrap(~variable, scales = "free")
+
+# Análisis de datos atípicos
+
+atipicos = function(x){
+  qnt<-quantile(x, probs=c(.25, .75), na.rm = T)
+ H <-0.5 * IQR(x, na.rm = T)
+ x2<-ifelse(x> qnt[2]+H | x< qnt[1]-H ,1,0)
+ 
+}
+```
+
+En los gráficos boxplot e histogramas se identifican varios datos atípicos, los cuales presentan valores muy superiores a los registrados en las demás observaciones. Se deciden tener 2 set de datos: uno sin eliminar los datos atípicos (**data1**) y otro eliminando aquellas observaciones superiores a 3IQR (**data2**). De acuerdo a las características del modelo a ajustar se usará el data set correspondiente.
+
+
+## 2. Ajuste de modelos predictivos
+
+### 2.1 Protocolo de evaluación y calibración
+
+Para el ajuste de los diferentes modelos se esteblece un 75% de los datos para entrenamiento y un 25% para el test, en la parte del entrenamiento se utilizará el método de k-fold con k=5 para la selección de los hiperparámetros.
+
+```{r}
+data_model = na.omit(data[, -c(1,7,8,20)])
+
+set.seed(500) 
+trainIndex <- createDataPartition(data_model$tipo, p = .75, list = FALSE, times = 1)
+length(trainIndex)
+
+webTrain <- data_model[ trainIndex,]
+webTest <-  data_model[-trainIndex,]
+
+```
+
+### 2.2 Regresión logística
+
+### 2.3 Naive Bayes
+
+```{r}
+# id= which(sapply(data_model,class)!="character")
+# data_model_n = mutate_each(data_model, funs(as.double), id)
+# 
+# tgrid1 = expand.grid(laplace=c(10, 7, 6, 5, 4.5, 4, 3.5, 3, 2, 1, 0.1, 0.01, 0.001, 0.0001, 0), 
+#                      usekernel=c(FALSE), adjust=c(0))
+# tgrid2 = expand.grid(laplace=c(10, 7, 6, 5, 4.5, 4, 3.5, 3, 2, 1, 0.1, 0.01, 0.001, 0.0001, 0), 
+#                      usekernel=c(TRUE), adjust=c(1))
+# tgrid = rbind(tgrid1, tgrid2)
+# 
+# 
+# data_model %>%                           # Se va a trabajar sobre el dataset completo
+#   filter(tipo == "0") %>%      # Sólo vamos a considerar los registros con el "LEAVE" en la variable objetivo
+#   select_if(is.numeric) %>%         # Sólo nos interesan las variables numéricas
+#   cor() %>%                         # obtenemos la matriz de correlaciones
+#   corrplot::corrplot()    
+# 
+# 
+# webTrainX = webTrain[,-14]
+# set.seed(123) 
+# model_nb5 <- train(webTrainX, webTrain$tipo,
+#                    method = "naive_bayes", 
+#                    tuneGrid=tgrid,
+#                    trControl = trainControl)
+# model_nb5
+# model_nb5$bestTune
+# 
+# predictions<-predict(object=model_nb5, webTest)
+# confusionMatrix(predictions, factor(webTest$tipo))
+```
+
+### 2.4 Árbol de decisión
+
+
+### 2.5 Modelo de ensamble: Random Forest
+
+
+### 2.6 Conclusión
+
+## 3. Cambio de representación y segmentación de los casos
+
+### 3.1 Análisis de componentes principales (ACP)
+
+### 3.2 Clúster k-means
+
+### 3.3 Clúster Jerárquico
+
+### 3.4 Conclusiones
