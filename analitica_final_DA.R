@@ -40,12 +40,13 @@ tables=readHTMLTable(theurl)[[1]][-1,]
 
 data$Pais <- toupper(data$Pais)
 data$Pais[tolower(data$Pais) %ni% tolower(tables$`ISO 3166 ALPHA-2`)]<-"none"
+data$Pais[data$Pais %in% names(table(data$Pais))[table(data$Pais)<=10]] <- "other" 
+
 table(data$Pais)
 
 
-# Limpieza de datos -------------------------------------------------------
-dim(data)
-str(data)
-sum(duplicated(data))
+# punto 3 -------------------------------------------------------
 
+
+data %>% filter(Tipo==1)
 
