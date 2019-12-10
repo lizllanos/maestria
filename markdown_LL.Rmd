@@ -23,6 +23,9 @@ library(stringr)
 library(XML)
 library(RCurl)
 library(MLeval)
+library(rpart)
+library(rpart.plot)
+
 options(warn=-1)
 # Lectura de datos --------------------------------------------------------
 setwd("C:/Users/lllanos/Dropbox/ICESI/Semestre I/Fundamentos de analítica I/Proyecto final")
@@ -70,10 +73,10 @@ data$os[grep("apache",data$os,ignore.case =T,fixed=F )] <- "apache"
 data$os[grep("ats",data$os,ignore.case =T,fixed=F )] <- "apache"
 data$os[grep("nginx",data$os,ignore.case =T,fixed=F )] <- "nginx"
 data$os[grep("None",data$os,ignore.case =T,fixed=F )] <- "none"
-data$os[grep("MICROSOFT-HTTPAPI",data$os,ignore.case =T,fixed=F )] <- "microsoft-httpapi"
-data$os[grep("Microsoft-IIS",data$os,ignore.case =T,fixed=F )] <- "microsoft-iis"
+data$os[grep("MICROSOFT-HTTPAPI",data$os,ignore.case =T,fixed=F )] <- "microsoft"
+data$os[grep("Microsoft-IIS",data$os,ignore.case =T,fixed=F )] <- "microsoft"
 
-data$os[ data$os %notin% c("apache", "nginx","none","microsoft-httpapi","microsoft-iis") ] <- "none"
+data$os[ data$os %notin% c("apache", "nginx","none","microsoft") ] <- "none"
 
 url_main="https://laendercode.net/es/2-letter-list.html"
 theurl=getURL(url_main,.opts = list(ssl.verifypeer = FALSE))
@@ -83,7 +86,7 @@ tables=readHTMLTable(theurl)[[1]][-1,]
 
 data$pais <- toupper(data$pais)
 data$pais[tolower(data$pais) %notin% tolower(tables$`ISO 3166 ALPHA-2`)]<-"none"
-data$pais[data$pais %in% names(table(data$pais))[table(data$pais)<=40]] <- "Other" 
+data$pais[data$pais %in% names(table(data$pais))[table(data$pais)<=100]] <- "Other" 
 
 data$tipo2 = "Benigno"
 data$tipo2[data$tipo ==1] = "Maligno"
@@ -128,14 +131,8 @@ ggplot(data_m, aes(value))+geom_histogram() + facet_wrap(~variable, scales = "fr
 
 # Análisis de datos atípicos
 
-atipicos = function(x,p,r){
-  qnt<-quantile(x, probs=c(.25, .75), na.rm = T)
- H <-p * IQR(x, na.rm = T)
- x2<-ifelse(x> qnt[2]+H | x< qnt[1]-H ,1,0)
- return(sum(x2))
-}
 
-atipicos2 = function(x,p,r){
+atipicos = function(x,p,r){
   qnt<-mean(x, na.rm = T)
  H <-p * sd(x, na.rm = T)
  x2<-ifelse(x> qnt+H | x< qnt-H ,1,0)
@@ -149,27 +146,24 @@ atipicos2 = function(x,p,r){
 
 }
 
-t_atipicos = cbind("Conteo Atipicos" = apply(na.omit(data_num), 2,atipicos,15),"% Atipicos" = apply(na.omit(data_num), 2,atipicos,15)/1781*100)
-
-t_atipicos[order(t_atipicos[,1]),]
-
-# t_atipicos2 = cbind("Conteo Atipicos" = apply(na.omit(data_num), 2,atipicos2,15),"% Atipicos" = apply(na.omit(data_num), 2,atipicos2,15)/1781*100)
-
-#t_atipicos2[order(t_atipicos2[,1]),]
-
-
-
 ```
 
 
 ```{r}
-atip = table(unlist(sapply(data_num, atipicos2,5,1)))
+atip = table(unlist(sapply(data_num, atipicos,5,1)))
+atip
 pos_atip = as.numeric(names(atip)[which(atip>=5)])
 pos_atip
 #Remove atipicos
 data[pos_atip,] = NA
 data = na.omit(data)
 
+
+data_num = data[,which(sapply(data,class) %notin% c("character", "factor"))]
+data_m = melt(data_num)
+
+ggplot(data_m, aes(variable, value))+geom_boxplot() + facet_wrap(~variable, scales = "free")
+ggplot(data_m, aes(value))+geom_histogram() + facet_wrap(~variable, scales = "free")
 ```
 
 En los gráficos boxplot e histogramas se identifican varios datos atípicos, los cuales presentan valores muy superiores a los registrados en las demás observaciones. Se deciden  que una observación es atípica cuando esta es superior o inferior 5 el Rango Intercuartílico (IQC). De acuerdo a las características del modelo a ajustar se ajustarán los tipos de las variables.
@@ -209,7 +203,7 @@ Para el ajuste de los diferentes modelos se esteblece un 80% de los datos para e
 # [16] "numbytesrecibidos"    "numpaquetesgenerados" "numpaquetesdns"      
 # [19] "tipo"                 "tipo2"                "largoheadermissing" 
 
-data_model = na.omit(data[, -c(1,4,5,8,20)])
+data_model = na.omit(data[, -c(1,4,8,20)])
 
 set.seed(500) 
 trainIndex <- createDataPartition(data_model$tipo, p = .8, list = FALSE, times = 1)
@@ -267,17 +261,17 @@ confusionMatrix(predictions, factor(webTrain$tipo))
 
 ```{r}
 
-data_model = na.omit(data[, -c(1,8,20)])
+data_model_naive = na.omit(data[, -c(1,8,20)])
 
 set.seed(500) 
-trainIndex <- createDataPartition(data_model$tipo, p = .8, list = FALSE, times = 1)
+trainIndex <- createDataPartition(data_model_naive$tipo, p = .8, list = FALSE, times = 1)
 length(trainIndex)
 
-webTrain <- data_model[ trainIndex,]
-webTest <-  data_model[-trainIndex,]
+webTrain <- data_model_naive[ trainIndex,]
+webTest <-  data_model_naive[-trainIndex,]
 
-id= which(sapply(data_model,class)!="factor")
-data_model_n = mutate_each(data_model, funs(as.double), id)
+id= which(sapply(data_model_naive,class)!="factor")
+data_model_n = mutate_each(data_model_naive, funs(as.double), id)
 
 tgrid1 = expand.grid(laplace=c(10, 7, 6, 5, 4.5, 4, 3.5, 3, 2, 1, 0.1, 0.01, 0.001, 0.0001, 0),
                      usekernel=c(FALSE), adjust=c(0))
@@ -311,6 +305,35 @@ predictions<-predict(object=model_nb5, webTest)
 
 ### 2.4 Árbol de decisión
 
+```{r}
+
+data_model_tree = na.omit(data[, -c(1,8,20)])
+
+set.seed(500) 
+trainIndex <- createDataPartition(data_model_tree$tipo, p = .8, list = FALSE, times = 1)
+length(trainIndex)
+
+webTrain <- data_model_tree[ trainIndex,]
+webTest <-  data_model_tree[-trainIndex,]
+
+trainControl=trainControl(method="cv", number=5)
+set.seed(9876)
+model_arbol1 <- train(tipo~., webTrain, 
+                      method='rpart',
+                      trControl = trainControl)
+model_arbol1
+plot(model_arbol1)
+```
+
+```{r}
+m <- model_arbol1$finalModel
+plot(m)
+text(m, cex=0.7)
+
+rpart.plot(m)  
+m$variable.importance # índice de importancia (no normalizada)
+plot(m$variable.importance)
+```
 
 ### 2.5 Modelo de ensamble: Random Forest
 
