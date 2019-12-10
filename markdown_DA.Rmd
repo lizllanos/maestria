@@ -1,0 +1,251 @@
+---
+title: "Untitled"
+author: "D"
+date: "December 10, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+library(reshape2)
+library(ggplot2)
+library(caret)
+library(MASS)
+library(naivebayes)
+library(dplyr)
+library(stringr)
+library(XML)
+library(RCurl)
+library(corrplot)
+
+# Lectura de datos --------------------------------------------------------
+setwd("D:/Master_CD/Fundamentos_1/proyecto_final")
+data = read.csv("PF-02-SitiosMalignos.csv", stringsAsFactors = FALSE)
+
+# Categorizaci?n de las variables.
+
+attach(data)
+
+'%notin%' <- Negate('%in%')
+'%ni%' <- Negate('%in%')
+
+Codificacion[Codificacion %in% c("ISO-8859","iso-8859-1","ISO-8859-1","windows-1251","windows-1252")] <- "iso"
+Codificacion[Codificacion %in% c("UTF-8","utf-8")] <- "utf-8"
+Codificacion[Codificacion %in% c("None")] <- "none"
+
+OS[grep("apache",OS,ignore.case =T,fixed=F )] <- "apache"
+OS[grep("ats",OS,ignore.case =T,fixed=F )] <- "apache"
+OS[grep("nginx",OS,ignore.case =T,fixed=F )] <- "nginx"
+OS[grep("None",OS,ignore.case =T,fixed=F )] <- "none"
+OS[grep("MICROSOFT-HTTPAPI",OS,ignore.case =T,fixed=F )] <- "microsoft-httpapi"
+OS[grep("Microsoft-IIS",OS,ignore.case =T,fixed=F )] <- "microsoft-iis"
+OS[ OS %ni% c("apache", "nginx","none","microsoft-httpapi","microsoft-iis") ] <- "none"
+
+
+url_main="https://laendercode.net/es/2-letter-list.html"
+theurl=getURL(url_main,.opts = list(ssl.verifypeer = FALSE))
+Sys.sleep (0.2) 
+tables=readHTMLTable(theurl)[[1]][-1,]
+
+data$Pais <- toupper(data$Pais)
+data$Pais[tolower(data$Pais) %ni% tolower(tables$`ISO 3166 ALPHA-2`)]<-"none"
+data$Pais[data$Pais %in% names(table(data$Pais))[table(data$Pais)<=10]] <- "other" 
+
+table(data$Pais)
+names(data) = tolower(names(data))
+
+data$os = as.factor(data$os)
+data$codificacion = as.factor(data$codificacion)
+summary(data) #La variable LargoHeader es la que m?s datos faltantes tiene
+
+data$largoheadermissing = as.character(ifelse(is.na(data$largoheader), 1, 0))
+data$largoheader = ifelse(is.na(data$largoheader), 0, data$largoheader)
+
+data$tipo = factor(data$tipo)
+
+data = data[-which(is.na(data$numpaquetesdns)),]
+
+data_num = data[,which(sapply(data,class) %notin% c("character", "factor"))]
+data_m = melt(data_num)
+
+
+atipicos = function(x,p,r){
+  qnt<-mean(x, na.rm = T)
+  H <-p * sd(x, na.rm = T)
+  x2<-ifelse(x> qnt+H | x< qnt-H ,1,0)
+  
+  if(r==1){
+    pos = which(x2==T)
+    return(pos)
+  }else{
+    return(sum(x2))
+  }
+  
+}
+
+atip = table(unlist(sapply(data_num, atipicos,4.2,1)))
+atip
+pos_atip = as.numeric(names(atip)[which(atip>=5)])
+pos_atip
+#Remove atipicos
+data[pos_atip,] = NA
+data = na.omit(data)
+
+data_num = data[,which(sapply(data,class) %notin% c("character", "factor"))]
+data_m = melt(data_num)
+
+
+```
+
+## Análisis de componentes principales
+
+El primer paso para realizar el análisis de componentes principales es verificar que las variables se encuentren correlacionadas, este procedimiento se realizó tanto para los casos malignos como para todos los casos, con el objetivo de comparar los resultados.
+
+```{r correlación}
+library("factoextra")
+library("FactoMineR")
+
+data_3 <- cbind.data.frame(data_num,tipo=data$tipo) %>% filter(tipo==1) %>% dplyr::select(-tipo) 
+data_3_all <- cbind.data.frame(data_num,tipo=data$tipo) %>% dplyr::select(-tipo)  
+
+par(mfrow = c(1, 2))
+corMat <- cor(data_3)
+corrplot(corMat, type="upper", order="hclust",title= "Malignos",mar=c(0,0,1,0))
+
+corMat_all <- cor(data_3_all)
+corrplot(corMat_all, type="upper", order="hclust",title= "Todos los datos",mar=c(0,0,1,0))
+
+
+```
+
+
+Del grafico de correlación para los datos malignos se observa una fuerte o moderada correlación positiva entre las variables asociadas a las tranferencias cliente-servidor, adicionalmente las variables largourl y numcarespeciales presentan una moderada o debil correlación negativa con la mayoria de las variables asociadas a las transferencias cliente-servidor, por ejemplo entre más caracteres tenga la url, se espera que en promedio se generen menos paquetes DNS en la comunicación cliente-servidor. En cuanto al grafico con todos los datos se puede observar que al ingresar los datos veningos se pierden las corelaciones negativas observadas para las variables largourl y numcarespeciales, es decir los registros venignos se ven influeciados en gran medida por estas variables.
+
+
+
+
+
+```{r PCA}
+
+res.pca <- PCA(data_3,ncp=4,  graph = FALSE)
+get_eig(res.pca)
+fviz_screeplot(res.pca, addlabels = TRUE, ylim = c(0, 80))
+
+```
+
+De los resultados obtenidos se puede observar que para acumular un 90% de la información de los datos originales, es necesario retener 4 componentes principales que acumulan el 93.3% de la variabilidad total observada.
+
+```{r Componentes}
+
+fviz_pca_biplot(res.pca)
+
+```
+
+Del grafico de individuos y variables se puede observar que las variables largourl y numcarespeciales estan en la misma dirección de la componente 2, es decir se espera que estas variables aporten de manera significativa en la construcción de la componente 2, mientras que las variables asociadas a las transferencias cliente-servidor se encuentan en la misma dirección de la componente 1, por lo tanto la componente 1 va a representar muy bien estas variables, finalmente las variables numpaquetesdns y numeroips son importantes en la construcción de ambas componentes, en cuanto a las paginas web se puede observar que se distinguen 3 grupos diferentes en el primer plano factorial y adiconal a esto hay una pagina web atipica que presenta valores extremos en todas las variables.
+
+
+```{r}
+load_cor <- t(cor(res.pca$ind$coord[,1:4,drop=F],data_3))
+data_plot=melt(load_cor)
+
+ggplot(aes( x = factor(Var1), y=value),data =data_plot ) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  coord_flip()+
+  facet_wrap(~ factor(Var2)) +
+  ylab("Correlación de pearson") +
+  xlab("Variables") +
+  theme_bw() 
+
+```
+
+Finalmente se muestran la contribucción de cada una de las variables a las primeras 4 componentes en terminos de la correlación de pearson, donde finalmente se comprueba que la primera componente esta compuesta principalmente de las variables asociadas a las transferencias cliente-servidor, mientras que la segunda componente se encuentra compuesta principalmente por las variables largourl y numcarespeciales, adicionalmente se observa que el largoheader esta generando en su mayoria el patron de la tercera componente.
+
+## Clustering K-means
+
+```{r kmeans}
+
+
+set.seed(1234)
+kmClustering0 <- kmeans(data_3, 1, nstart=100, iter.max=150)
+kmClustering1 <- kmeans(data_3, 3, nstart=100, iter.max=150)
+kmClustering2 <- kmeans(data_3, 4, nstart=100, iter.max=150)
+kmClustering3 <- kmeans(data_3, 5, nstart=100, iter.max=150)
+
+library(gridExtra)
+
+c0 <- fviz_cluster(kmClustering0, data_3, geom="point")#labelsize = 5)
+c1 <- fviz_cluster(kmClustering1, data_3, geom="point")#labelsize = 5)
+c2 <- fviz_cluster(kmClustering2, data_3, geom="point")#labelsize = 5)
+c3 <- fviz_cluster(kmClustering3, data_3, geom="point")#labelsize = 5)
+
+grid.arrange(c0,c1,c2,c3,ncol=2)
+
+
+```
+
+## Determinación del número de clusters K
+
+### Método del codo
+
+```{r codo}
+
+
+vars <- apply(data_3,2,var)
+sumvars <- sum(vars)
+wss <- (nrow(data_3) - 1)*sumvars # Para obtener el TSS multiplicamos la varianza por (N-1)
+
+# Para K>1, calculamos las diferencias cuadradas en un ciclo
+set.seed(1234)
+maxK <- 10
+for (k in 2:maxK) { 
+
+  wssK <- 0 # Aquí va a quedar el total de WSS para el k actual
+  kmClustering <- kmeans(data_3, k, nstart=30, iter.max=150)
+  data_3$clusters <- kmClustering$cluster
+  
+  for(i in 1:k) { # Recorrido de los clusters
+
+    clusterData <- subset(data_3, clusters==i)
+    centroide <- apply(clusterData, 2, FUN=mean)
+    wssK <- wssK + sum(apply(clusterData, 1, FUN=function(fila) {sum((fila-centroide)^2)}))
+  }
+  # Una vez calculado el wss del K actual, lo guardamos en el vector de WSS
+  wss[k] <- wssK
+}
+wss
+
+plot(1:maxK, wss, type = "b", xlab = "Número de Clusters", ylab = "Within groups sum of squares")  
+grid()
+
+```
+
+### Método de Calinski-Harabasz
+
+```{r  Calinski}
+library(fpc)
+
+set.seed(11111)
+kmClusteringRuns.ch <- kmeansruns(data_3, krange=1:10, criterion="ch")
+summary(kmClusteringRuns.ch)
+
+val_ch <- kmClusteringRuns.ch$crit
+rm(kmClusteringRuns.ch)
+
+plot(val_ch) 
+
+
+```
+
+```{r silueata}
+
+```
+
