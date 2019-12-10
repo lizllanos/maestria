@@ -8,6 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
 knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
 
 ```
 El objetivo de este trabajo es implementar los diferentes modelos con el fin de caracterizar y predecir la condición de las páginas web identificadas como benignas o malignas
@@ -27,47 +28,55 @@ library(rpart)
 library(rpart.plot)
 
 options(warn=-1)
+`%notin%` <- Negate(`%in%`)
+
+```
+
+```{r load data}
 # Lectura de datos --------------------------------------------------------
 setwd("C:/Users/lllanos/Dropbox/ICESI/Semestre I/Fundamentos de analítica I/Proyecto final")
 data = read.csv("PF-02-SitiosMalignos.csv", stringsAsFactors = FALSE)
 
 names(data) = tolower(names(data))
 
-`%notin%` <- Negate(`%in%`)
-
 ```
 
 ## 1. Limpieza de datos
 
-Para iniciar los análisis procedemos a realizar una limpieza a los datos que serán utilizados en el modelo.
+Para iniciar los análisis procedemos a realizar una limpieza a los datos que serán utilizados en el modelo. A continuación se describe paso a paso los procesos realizados.
 
 ### 1.1 Baseline
 
 El baseline de los datos es la condición de benigno con un 87.87% 
-```{r, results=TRUE, echo=TRUE}
+```{r baseline, results=TRUE, echo=TRUE}
 # Baseline
 prop.table(table(data$tipo))*100
 
 ```
-### 1.2 Duplicados 
-Se verifica la cantidad de registros y las variables del dataset, contamos con 1781 páginas web y 20 variables. También se verifica que no hayan registros duplicados
 
-```{r, echo=TRUE}
+### 1.2 Duplicados 
+
+Se verifica la cantidad de registros y las variables del dataset, contamos con 1781 páginas web y 20 variables. También se verifica que no hayan registros duplicados y el tipo de datos que se tiene en la base de datos.
+
+```{r clean 1, echo=TRUE}
 # Limpieza de datos -------------------------------------------------------
 dim(data)
-str(data)
 sum(duplicated(data))
+str(data)
 
 ```
 
 ### 1.3 Recodificación de variables y eliminación de variables
 
-Con el fin de poder incluir las variables categóricas a los diferentes modelos se realiza una recodificación a la variable: País, Codificación y OS
+Con el fin de poder incluir las variables categóricas en los diferentes modelos se realiza una recodificación a la variable: País, Codificación y OS
 
-```{r}
+```{r recode, echo=TRUE}
+# Recodificación a la variable codificación
 data$codificacion[data$codificacion %in% c("ISO-8859","iso-8859-1","ISO-8859-1","windows-1251","windows-1252")] <- "iso"
 data$codificacion[data$codificacion %in% c("UTF-8","utf-8")] <- "utf-8"
 data$codificacion[data$codificacion %in% c("None")] <- "none"
+
+# Recodificación a la variable OS
 
 data$os[grep("apache",data$os,ignore.case =T,fixed=F )] <- "apache"
 data$os[grep("ats",data$os,ignore.case =T,fixed=F )] <- "apache"
@@ -77,6 +86,8 @@ data$os[grep("MICROSOFT-HTTPAPI",data$os,ignore.case =T,fixed=F )] <- "microsoft
 data$os[grep("Microsoft-IIS",data$os,ignore.case =T,fixed=F )] <- "microsoft"
 
 data$os[ data$os %notin% c("apache", "nginx","none","microsoft") ] <- "none"
+
+# Recodificación a la variable País
 
 url_main="https://laendercode.net/es/2-letter-list.html"
 theurl=getURL(url_main,.opts = list(ssl.verifypeer = FALSE))
@@ -88,18 +99,19 @@ data$pais <- toupper(data$pais)
 data$pais[tolower(data$pais) %notin% tolower(tables$`ISO 3166 ALPHA-2`)]<-"none"
 data$pais[data$pais %in% names(table(data$pais))[table(data$pais)<=100]] <- "Other" 
 
-data$tipo2 = "Benigno"
-data$tipo2[data$tipo ==1] = "Maligno"
-
 ```
 
-Las variables que no serán utilizadas en ninguno de los análisis son: URL y Estado
+En este caso el procedimiento a seguir fue unificar aquellos valores de las variables que tenían una escritura diferente, por ejemplo: mayúsculas, espacios, carácteres especiales. En el caso de la variable País, se recodificó con el Código ISO y se agruparon como Otros aquellos países que tenían menos de 100 registros. Para la variable OS, se tuvo en cuenta el servidor web de tal forma que se identificaron 3 de estos: Apache, Microsoft y Nginx.
+
+Las variables que no serán utilizadas en ninguno de los análisis será el ID (URL) y Estado, dado que esta variable presenta muchas categorías.
+
+De acuerdo a las características del modelo a ajustar se ajustarán los tipos de las variables, aquellas categóricas se establecen como factor y en el caso de Naive Bayes las númericas se convierten a double.
 
 ### 1.4 Verificación de datos faltantes
 
-Se identifican 2 variables que contienen datos faltantes: El tamaño del encabezado, con  y Número de paquetes DNS  
+Se identifican 2 variables que contienen datos faltantes: El tamaño del encabezado, con 812 datos faltantes  y Número de paquetes DNS con 1 dato faltante. 
 
-```{r}
+```{r missing data}
 # Verificar datosNA
 
 # table(data$pais)
@@ -107,6 +119,8 @@ data$os = as.factor(data$os)
 data$codificacion = as.factor(data$codificacion)
 data$pais = as.factor(data$pais)
 
+summary(data$largoheader)
+summary(data$numpaquetesdns)
 
 data$largoheadermissing = as.factor(ifelse(is.na(data$largoheader), 1, 0))
 data$largoheader = ifelse(is.na(data$largoheader), 0, data$largoheader)
@@ -115,14 +129,16 @@ data$tipo = factor(data$tipo)
 summary(data) #La variable LargoHeader es la que más datos faltantes tiene
 
 ```
+Dado que largoHeader es la que presenta la mayor cantidad de datos faltantes se procede a crear una nueva variable que identifica si el dato es faltante o no, y posteriormente se reemplazan los NA en por el valor de 0.
 
+En el caso de la variable  Número de paquetes DNS, se decide eliminar el registro que tiene dato faltante de la base de datos.
 
 ### 1.5 Análisis exploratorio de los datos
 
 #### 1.5.1 Datos anómalos
-Para la identificación de registros anómalos se filtran las variables númericas y se procede a realizar un análisis gráfico mediante boxplot e histogramas
+Para la identificación de registros anómalos se filtran las variables númericas y se procede a realizar un análisis gráfico mediante boxplot e histogramas.
 
-```{r}
+```{r outliers}
 data_num = data[,which(sapply(data,class) %notin% c("character", "factor"))]
 data_m = melt(data_num)
 
@@ -147,12 +163,15 @@ atipicos = function(x,p,r){
 }
 
 ```
+En los gráficos boxplot e histogramas se identifican varios datos atípicos, los cuales presentan valores muy superiores a los registrados en las demás observaciones. Se deciden  que una observación es atípica cuando esta es superior o inferior a 5 desviaciones estándar del promedio de cada variable.
 
-
-```{r}
+```{r rem outliers}
 atip = table(unlist(sapply(data_num, atipicos,5,1)))
+print("Atípicos identificados")
 atip
 pos_atip = as.numeric(names(atip)[which(atip>=5)])
+
+print("Atípicos a eliminar")
 pos_atip
 #Remove atipicos
 data[pos_atip,] = NA
@@ -166,22 +185,23 @@ ggplot(data_m, aes(variable, value))+geom_boxplot() + facet_wrap(~variable, scal
 ggplot(data_m, aes(value))+geom_histogram() + facet_wrap(~variable, scales = "free")
 ```
 
-En los gráficos boxplot e histogramas se identifican varios datos atípicos, los cuales presentan valores muy superiores a los registrados en las demás observaciones. Se deciden  que una observación es atípica cuando esta es superior o inferior 5 el Rango Intercuartílico (IQC). De acuerdo a las características del modelo a ajustar se ajustarán los tipos de las variables.
+Finalmente se identifican 5 registros que presentan valores atípicos en la mayoría de las variables y se procede a eliminarlos de la base de datos. 
+
 
 #### 1.5.2 Análisis gráfico y descriptivo
 
 Con el fin de explorar el comportamiento de algunas variables se realizarán algunos análisis gráficos y descriptivos en función de la variable que identifica como maligna o benigna una página web.
 
-```{r}
-ggplot(data, aes(pais))+ geom_bar(aes(fill=tipo2))+labs(fill="Tipo")
+```{r plots}
 ggplot(data, aes(numeroips))+ geom_density(aes(fill=tipo2),alpha=0.4)+labs(fill="Tipo")
-ggplot(data, aes(largourl))+ geom_density(aes(fill=tipo2),alpha=0.4) +labs(fill="Tipo")#+ xlim(0,100)
-#ggplot(data, aes(numpaquetesenviados))+ geom_density(aes(fill=tipo2),alpha=0.4) #+ xlim(0,100)
+
+ggplot(data, aes(largourl))+ geom_density(aes(fill=tipo2),alpha=0.4) +labs(fill="Tipo")
 
 ggplot(data, aes(numpaquetesdns))+ geom_density(aes(fill=tipo2),alpha=0.4)+labs(fill="Tipo") 
 
 ggplot(data, aes(codificacion))+ geom_bar(aes(fill=tipo2))+labs(fill="Tipo")
 ggplot(data, aes(os))+ geom_bar(aes(fill=tipo2))+labs(fill="Tipo")
+ggplot(data, aes(pais))+ geom_bar(aes(fill=tipo2))+labs(fill="Tipo")
 
 #data %>% group_by(tipo) %>% #summarise(mean(numbytes),mean(numpaquetesdns),mean(numpaquetesenviados))
 ```
@@ -194,7 +214,7 @@ ggplot(data, aes(os))+ geom_bar(aes(fill=tipo2))+labs(fill="Tipo")
 
 Para el ajuste de los diferentes modelos se esteblece un 80% de los datos para entrenamiento y un 20% para el test, en la parte del entrenamiento se utilizará el método de k-fold con k=5 para la selección de los hiperparámetros.
 
-```{r}
+```{r train test}
 # [1] "url"                  "largourl"             "numcarespeciales"    
 #  [4] "codificacion"         "os"                   "largoheader"         
 #  [7] "pais"                 "estado"               "numpaquetestcp"      
@@ -203,6 +223,13 @@ Para el ajuste de los diferentes modelos se esteblece un 80% de los datos para e
 # [16] "numbytesrecibidos"    "numpaquetesgenerados" "numpaquetesdns"      
 # [19] "tipo"                 "tipo2"                "largoheadermissing" 
 
+
+```
+
+### 2.2 Regresión logística
+
+Se remueve la variable codificación
+```{r logit, results=FALSE}
 data_model = na.omit(data[, -c(1,4,8,20)])
 
 set.seed(500) 
@@ -212,12 +239,6 @@ length(trainIndex)
 webTrain <- data_model[ trainIndex,]
 webTest <-  data_model[-trainIndex,]
 
-```
-
-### 2.2 Regresión logística
-
-```{r}
-set.seed(123) 
 model_logreg1 <- train(tipo~., webTrain, 
                        method="glm", family="binomial",
                        trControl=trainControl(method="cv", number=5),
@@ -241,25 +262,21 @@ model_stepBoth <- train(tipo ~., data = data_model,
 
 ```
 
-```{r}
+```{r logit confusion matrix}
 model_stepBoth$finalModel
 
-predictions<-predict(object=model_stepBoth, webTest)
-confusionMatrix(predictions, factor(webTest$tipo))
+predictions_test<-predict(object=model_stepBoth, webTest)
+confusionMatrix(predictions_test, factor(webTest$tipo))
 
 predictions<-predict(object=model_stepBoth, webTrain)
 confusionMatrix(predictions, factor(webTrain$tipo))
 
-#res <- evalm(model_stepBoth)
 
-## get ROC
-
-#res$roc
 ```
 
 ### 2.3 Naive Bayes
 
-```{r}
+```{r naive}
 
 data_model_naive = na.omit(data[, -c(1,8,20)])
 
@@ -295,17 +312,24 @@ model_nb5 <- train(webTrainX, webTrain$tipo,
                    tuneGrid=tgrid,
                    trControl = trainControl)
 model_nb5
+
+ 
+```
+
+```{r naive confusion matrix}
 model_nb5$bestTune
 
-predictions<-predict(object=model_nb5, webTest)
- confusionMatrix(predictions, factor(webTest$tipo))
- 
+predictions_test<-predict(object=model_nb5, webTest)
+ confusionMatrix(predictions_test, factor(webTest$tipo))
+
+predictions<-predict(object=model_nb5, webTrain)
+ confusionMatrix(predictions, factor(webTrain$tipo))
  
 ```
 
 ### 2.4 Árbol de decisión
 
-```{r}
+```{r tree}
 
 data_model_tree = na.omit(data[, -c(1,8,20)])
 
@@ -325,7 +349,7 @@ model_arbol1
 plot(model_arbol1)
 ```
 
-```{r}
+```{r tree confusion matrix}
 m <- model_arbol1$finalModel
 plot(m)
 text(m, cex=0.7)
