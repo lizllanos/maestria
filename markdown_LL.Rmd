@@ -1,5 +1,5 @@
 ---
-title: "Proyecto final analítica"
+title: "Proyecto final Fundamentos de Analítica I"
 author: "Lizeth Llanos y Diego Agudelo"
 date: "12/8/2019"
 output: html_document
@@ -12,7 +12,7 @@ knitr::opts_chunk$set(warning = FALSE)
 ```
 El objetivo de este trabajo es implementar los diferentes modelos con el fin de caracterizar y predecir la condición de las páginas web identificadas como benignas o malignas
 
-```{r, warning=FALSE, results=FALSE}
+```{r packages , results='hide', message=F, warning=F}
 library(reshape2)
 library(ggplot2)
 library(caret)
@@ -22,7 +22,8 @@ library(dplyr)
 library(stringr)
 library(XML)
 library(RCurl)
-
+library(MLeval)
+options(warn=-1)
 # Lectura de datos --------------------------------------------------------
 setwd("C:/Users/lllanos/Dropbox/ICESI/Semestre I/Fundamentos de analítica I/Proyecto final")
 data = read.csv("PF-02-SitiosMalignos.csv", stringsAsFactors = FALSE)
@@ -76,11 +77,17 @@ data$os[ data$os %notin% c("apache", "nginx","none","microsoft-httpapi","microso
 
 url_main="https://laendercode.net/es/2-letter-list.html"
 theurl=getURL(url_main,.opts = list(ssl.verifypeer = FALSE))
+Sys.sleep(0.2)
+
 tables=readHTMLTable(theurl)[[1]][-1,]
 
 data$pais <- toupper(data$pais)
 data$pais[tolower(data$pais) %notin% tolower(tables$`ISO 3166 ALPHA-2`)]<-"none"
-table(data$pais)
+data$pais[data$pais %in% names(table(data$pais))[table(data$pais)<=40]] <- "Other" 
+
+data$tipo2 = "Benigno"
+data$tipo2[data$tipo ==1] = "Maligno"
+
 ```
 
 Las variables que no serán utilizadas en ninguno de los análisis son: URL y Estado
@@ -95,14 +102,15 @@ Se identifican 2 variables que contienen datos faltantes: El tamaño del encabez
 # table(data$pais)
 data$os = as.factor(data$os)
 data$codificacion = as.factor(data$codificacion)
-summary(data) #La variable LargoHeader es la que más datos faltantes tiene
+data$pais = as.factor(data$pais)
 
-data$largoheadermissing = as.character(ifelse(is.na(data$largoheader), 1, 0))
+
+data$largoheadermissing = as.factor(ifelse(is.na(data$largoheader), 1, 0))
 data$largoheader = ifelse(is.na(data$largoheader), 0, data$largoheader)
 
 data$tipo = factor(data$tipo)
+summary(data) #La variable LargoHeader es la que más datos faltantes tiene
 
-data = data[which(is.na(data$numpaquetesdns)),]
 ```
 
 
@@ -120,33 +128,91 @@ ggplot(data_m, aes(value))+geom_histogram() + facet_wrap(~variable, scales = "fr
 
 # Análisis de datos atípicos
 
-atipicos = function(x,p){
+atipicos = function(x,p,r){
   qnt<-quantile(x, probs=c(.25, .75), na.rm = T)
  H <-p * IQR(x, na.rm = T)
  x2<-ifelse(x> qnt[2]+H | x< qnt[1]-H ,1,0)
  return(sum(x2))
 }
 
-t_atipicos = cbind("Conteo Atipicos" = apply(na.omit(data_num), 2,atipicos,5),"% Atipicos" = apply(na.omit(data_num), 2,atipicos,5)/1781*100)
+atipicos2 = function(x,p,r){
+  qnt<-mean(x, na.rm = T)
+ H <-p * sd(x, na.rm = T)
+ x2<-ifelse(x> qnt+H | x< qnt-H ,1,0)
+ 
+ if(r==1){
+   pos = which(x2==T)
+    return(pos)
+ }else{
+    return(sum(x2))
+ }
 
-t_atipicos[order(t_atipicos[,1])]
+}
+
+t_atipicos = cbind("Conteo Atipicos" = apply(na.omit(data_num), 2,atipicos,15),"% Atipicos" = apply(na.omit(data_num), 2,atipicos,15)/1781*100)
+
+t_atipicos[order(t_atipicos[,1]),]
+
+# t_atipicos2 = cbind("Conteo Atipicos" = apply(na.omit(data_num), 2,atipicos2,15),"% Atipicos" = apply(na.omit(data_num), 2,atipicos2,15)/1781*100)
+
+#t_atipicos2[order(t_atipicos2[,1]),]
+
+
+
 ```
 
-En los gráficos boxplot e histogramas se identifican varios datos atípicos, los cuales presentan valores muy superiores a los registrados en las demás observaciones. Se deciden  otro eliminando aquellas observaciones superiores a 3IQR. De acuerdo a las características del modelo a ajustar se usará el data set correspondiente.
+
+```{r}
+atip = table(unlist(sapply(data_num, atipicos2,5,1)))
+pos_atip = as.numeric(names(atip)[which(atip>=5)])
+pos_atip
+#Remove atipicos
+data[pos_atip,] = NA
+data = na.omit(data)
+
+```
+
+En los gráficos boxplot e histogramas se identifican varios datos atípicos, los cuales presentan valores muy superiores a los registrados en las demás observaciones. Se deciden  que una observación es atípica cuando esta es superior o inferior 5 el Rango Intercuartílico (IQC). De acuerdo a las características del modelo a ajustar se ajustarán los tipos de las variables.
 
 #### 1.5.2 Análisis gráfico y descriptivo
+
+Con el fin de explorar el comportamiento de algunas variables se realizarán algunos análisis gráficos y descriptivos en función de la variable que identifica como maligna o benigna una página web.
+
+```{r}
+ggplot(data, aes(pais))+ geom_bar(aes(fill=tipo2))+labs(fill="Tipo")
+ggplot(data, aes(numeroips))+ geom_density(aes(fill=tipo2),alpha=0.4)+labs(fill="Tipo")
+ggplot(data, aes(largourl))+ geom_density(aes(fill=tipo2),alpha=0.4) +labs(fill="Tipo")#+ xlim(0,100)
+#ggplot(data, aes(numpaquetesenviados))+ geom_density(aes(fill=tipo2),alpha=0.4) #+ xlim(0,100)
+
+ggplot(data, aes(numpaquetesdns))+ geom_density(aes(fill=tipo2),alpha=0.4)+labs(fill="Tipo") 
+
+ggplot(data, aes(codificacion))+ geom_bar(aes(fill=tipo2))+labs(fill="Tipo")
+ggplot(data, aes(os))+ geom_bar(aes(fill=tipo2))+labs(fill="Tipo")
+
+#data %>% group_by(tipo) %>% #summarise(mean(numbytes),mean(numpaquetesdns),mean(numpaquetesenviados))
+```
+
+
 
 ## 2. Ajuste de modelos predictivos
 
 ### 2.1 Protocolo de evaluación y calibración
 
-Para el ajuste de los diferentes modelos se esteblece un 75% de los datos para entrenamiento y un 25% para el test, en la parte del entrenamiento se utilizará el método de k-fold con k=5 para la selección de los hiperparámetros.
+Para el ajuste de los diferentes modelos se esteblece un 80% de los datos para entrenamiento y un 20% para el test, en la parte del entrenamiento se utilizará el método de k-fold con k=5 para la selección de los hiperparámetros.
 
 ```{r}
-data_model = na.omit(data[, -c(1,7,8,20)])
+# [1] "url"                  "largourl"             "numcarespeciales"    
+#  [4] "codificacion"         "os"                   "largoheader"         
+#  [7] "pais"                 "estado"               "numpaquetestcp"      
+# [10] "puertosremotos"       "numeroips"            "numbytes"            
+# [13] "numpaquetesenviados"  "numpaquetesrecibidos" "numbytesenviados"    
+# [16] "numbytesrecibidos"    "numpaquetesgenerados" "numpaquetesdns"      
+# [19] "tipo"                 "tipo2"                "largoheadermissing" 
+
+data_model = na.omit(data[, -c(1,4,5,8,20)])
 
 set.seed(500) 
-trainIndex <- createDataPartition(data_model$tipo, p = .75, list = FALSE, times = 1)
+trainIndex <- createDataPartition(data_model$tipo, p = .8, list = FALSE, times = 1)
 length(trainIndex)
 
 webTrain <- data_model[ trainIndex,]
@@ -156,37 +222,91 @@ webTest <-  data_model[-trainIndex,]
 
 ### 2.2 Regresión logística
 
+```{r}
+set.seed(123) 
+model_logreg1 <- train(tipo~., webTrain, 
+                       method="glm", family="binomial",
+                       trControl=trainControl(method="cv", number=5),
+                       preProcess=c("center", "scale"))
+
+model_logreg1 
+
+
+
+
+trainControl=trainControl(method="cv", number=5)
+set.seed(123) 
+model_stepBoth <- train(tipo ~., data = data_model,
+                        method = "glmStepAIC", direction ="forward", 
+                        trControl = trainControl,
+                        preProcess=c("center", "scale"),
+                        trace=TRUE)
+
+
+
+
+```
+
+```{r}
+model_stepBoth$finalModel
+
+predictions<-predict(object=model_stepBoth, webTest)
+confusionMatrix(predictions, factor(webTest$tipo))
+
+predictions<-predict(object=model_stepBoth, webTrain)
+confusionMatrix(predictions, factor(webTrain$tipo))
+
+#res <- evalm(model_stepBoth)
+
+## get ROC
+
+#res$roc
+```
+
 ### 2.3 Naive Bayes
 
 ```{r}
-# id= which(sapply(data_model,class)!="character")
-# data_model_n = mutate_each(data_model, funs(as.double), id)
-# 
-# tgrid1 = expand.grid(laplace=c(10, 7, 6, 5, 4.5, 4, 3.5, 3, 2, 1, 0.1, 0.01, 0.001, 0.0001, 0), 
-#                      usekernel=c(FALSE), adjust=c(0))
-# tgrid2 = expand.grid(laplace=c(10, 7, 6, 5, 4.5, 4, 3.5, 3, 2, 1, 0.1, 0.01, 0.001, 0.0001, 0), 
-#                      usekernel=c(TRUE), adjust=c(1))
-# tgrid = rbind(tgrid1, tgrid2)
-# 
-# 
+
+data_model = na.omit(data[, -c(1,8,20)])
+
+set.seed(500) 
+trainIndex <- createDataPartition(data_model$tipo, p = .8, list = FALSE, times = 1)
+length(trainIndex)
+
+webTrain <- data_model[ trainIndex,]
+webTest <-  data_model[-trainIndex,]
+
+id= which(sapply(data_model,class)!="factor")
+data_model_n = mutate_each(data_model, funs(as.double), id)
+
+tgrid1 = expand.grid(laplace=c(10, 7, 6, 5, 4.5, 4, 3.5, 3, 2, 1, 0.1, 0.01, 0.001, 0.0001, 0),
+                     usekernel=c(FALSE), adjust=c(0))
+tgrid2 = expand.grid(laplace=c(10, 7, 6, 5, 4.5, 4, 3.5, 3, 2, 1, 0.1, 0.01, 0.001, 0.0001, 0),
+                     usekernel=c(TRUE), adjust=c(1))
+tgrid = rbind(tgrid1, tgrid2)
+
+
 # data_model %>%                           # Se va a trabajar sobre el dataset completo
 #   filter(tipo == "0") %>%      # Sólo vamos a considerar los registros con el "LEAVE" en la variable objetivo
 #   select_if(is.numeric) %>%         # Sólo nos interesan las variables numéricas
 #   cor() %>%                         # obtenemos la matriz de correlaciones
-#   corrplot::corrplot()    
-# 
-# 
-# webTrainX = webTrain[,-14]
-# set.seed(123) 
-# model_nb5 <- train(webTrainX, webTrain$tipo,
-#                    method = "naive_bayes", 
-#                    tuneGrid=tgrid,
-#                    trControl = trainControl)
-# model_nb5
-# model_nb5$bestTune
-# 
-# predictions<-predict(object=model_nb5, webTest)
-# confusionMatrix(predictions, factor(webTest$tipo))
+#   corrplot::corrplot()
+
+
+webTrainX = webTrain[,-which(names(webTrain)=="tipo")]
+
+set.seed(123)
+model_nb5 <- train(webTrainX, webTrain$tipo,
+                   method = "naive_bayes",
+                   tuneGrid=tgrid,
+                   trControl = trainControl)
+model_nb5
+model_nb5$bestTune
+
+predictions<-predict(object=model_nb5, webTest)
+ confusionMatrix(predictions, factor(webTest$tipo))
+ 
+ 
 ```
 
 ### 2.4 Árbol de decisión
