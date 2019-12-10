@@ -163,10 +163,10 @@ atipicos = function(x,p,r){
 }
 
 ```
-En los gráficos boxplot e histogramas se identifican varios datos atípicos, los cuales presentan valores muy superiores a los registrados en las demás observaciones. Se deciden  que una observación es atípica cuando esta es superior o inferior a 5 desviaciones estándar del promedio de cada variable.
+En los gráficos boxplot e histogramas se identifican varios datos atípicos, los cuales presentan valores muy superiores a los registrados en las demás observaciones. Se deciden  que una observación es atípica cuando esta es superior o inferior a 4.2 desviaciones estándar del promedio de cada variable.
 
 ```{r rem outliers}
-atip = table(unlist(sapply(data_num, atipicos,5,1)))
+atip = table(unlist(sapply(data_num, atipicos,4.2,1)))
 print("Atípicos identificados")
 atip
 pos_atip = as.numeric(names(atip)[which(atip>=5)])
@@ -185,34 +185,36 @@ ggplot(data_m, aes(variable, value))+geom_boxplot() + facet_wrap(~variable, scal
 ggplot(data_m, aes(value))+geom_histogram() + facet_wrap(~variable, scales = "free")
 ```
 
-Finalmente se identifican 5 registros que presentan valores atípicos en la mayoría de las variables y se procede a eliminarlos de la base de datos. 
+Finalmente se identifican 8 registros que presentan valores atípicos en la mayoría de las variables y se procede a eliminarlos de la base de datos. 
 
 
 #### 1.5.2 Análisis gráfico y descriptivo
 
 Con el fin de explorar el comportamiento de algunas variables se realizarán algunos análisis gráficos y descriptivos en función de la variable que identifica como maligna o benigna una página web.
 
-```{r plots}
-ggplot(data, aes(numeroips))+ geom_density(aes(fill=tipo2),alpha=0.4)+labs(fill="Tipo")
+```{r plot num}
+ggplot(data, aes(numeroips))+ geom_density(aes(fill=tipo),alpha=0.4)+labs(fill="Tipo")
 
-ggplot(data, aes(largourl))+ geom_density(aes(fill=tipo2),alpha=0.4) +labs(fill="Tipo")
+ggplot(data, aes(largourl))+ geom_density(aes(fill=tipo),alpha=0.4) +labs(fill="Tipo")
 
-ggplot(data, aes(numpaquetesdns))+ geom_density(aes(fill=tipo2),alpha=0.4)+labs(fill="Tipo") 
+ggplot(data, aes(numpaquetesdns))+ geom_density(aes(fill=tipo),alpha=0.4)+labs(fill="Tipo") 
 
-ggplot(data, aes(codificacion))+ geom_bar(aes(fill=tipo2))+labs(fill="Tipo")
-ggplot(data, aes(os))+ geom_bar(aes(fill=tipo2))+labs(fill="Tipo")
-ggplot(data, aes(pais))+ geom_bar(aes(fill=tipo2))+labs(fill="Tipo")
 
-#data %>% group_by(tipo) %>% #summarise(mean(numbytes),mean(numpaquetesdns),mean(numpaquetesenviados))
 ```
 
+```{r plot cat}
+ggplot(data, aes(codificacion))+ geom_bar(aes(fill=tipo))+labs(fill="Tipo")
+ggplot(data, aes(os))+ geom_bar(aes(fill=tipo))+labs(fill="Tipo")
+ggplot(data, aes(pais))+ geom_bar(aes(fill=tipo))+labs(fill="Tipo")
+
+```
 
 
 ## 2. Ajuste de modelos predictivos
 
 ### 2.1 Protocolo de evaluación y calibración
 
-Para el ajuste de los diferentes modelos se esteblece un 80% de los datos para entrenamiento y un 20% para el test, en la parte del entrenamiento se utilizará el método de k-fold con k=5 para la selección de los hiperparámetros.
+Para el ajuste de los diferentes modelos se esteblece un 80% de los datos para entrenamiento y un 20% para el test, en la parte del entrenamiento se utilizará el método de k-fold con k=5 para la selección de los hiperparámetros de los diferentes modelos.
 
 ```{r train test}
 # [1] "url"                  "largourl"             "numcarespeciales"    
@@ -228,9 +230,10 @@ Para el ajuste de los diferentes modelos se esteblece un 80% de los datos para e
 
 ### 2.2 Regresión logística
 
-Se remueve la variable codificación
+Para el ajuste del modelo logístico no se tendrá en cuenta la variable codificación debido a que una de sus categorías tiene desbalance. Para la selección de las variables en el modelo se utilizará el método Stepwise Forward y el criterio AIC. Los datos que ingresan al modelo se centran y escalan para poder identificar las variables más importantes.
+
 ```{r logit, results=FALSE}
-data_model = na.omit(data[, -c(1,4,8,20)])
+data_model = na.omit(data[, -c(1,4,8)])
 
 set.seed(500) 
 trainIndex <- createDataPartition(data_model$tipo, p = .8, list = FALSE, times = 1)
@@ -262,27 +265,48 @@ model_stepBoth <- train(tipo ~., data = data_model,
 
 ```
 
+Después de realizar la selección de variables el modelo que se escogió tiene un AIC = 689.4 y 12 variables regresoras
+
 ```{r logit confusion matrix}
 model_stepBoth$finalModel
 
-predictions_test<-predict(object=model_stepBoth, webTest)
-confusionMatrix(predictions_test, factor(webTest$tipo))
+log = data.frame("var"= names(model_stepBoth$finalModel$coefficients)[-1], "coef"=model_stepBoth$finalModel$coefficients[-1])
 
-predictions<-predict(object=model_stepBoth, webTrain)
-confusionMatrix(predictions, factor(webTrain$tipo))
+p <- ggplot(log, aes(x=reorder(var, coef), y=coef)) + 
+  geom_bar(stat="identity", width=.5, fill="tomato3") + 
+  labs(title= "Importancia por variable") + 
+  theme(text = element_text(size=12)) +
+  scale_x_discrete(name="Variable") + 
+  coord_flip()+ylab("Coeficientes estandarizados ")
 
+p
 
 ```
+
+En el gráfico de los coeficientes estandarizados se observa que las variables más importantes para identificar si una página web es maligna o benigna son: la cantidad de puertos remotos, el número de bytes enviados y recibidos.
+
+```{r}
+print("Test")
+predictions_test<-predict(object=model_stepBoth, webTest)
+confusionMatrix(predictions_test, factor(webTest$tipo))$overall[1:2]
+
+print("Training")
+predictions<-predict(object=model_stepBoth, webTrain)
+confusionMatrix(predictions, factor(webTrain$tipo))$overall[1:2]
+
+```
+
+En cuanto a las métricas de desempeño se observa que los valores obtenidos con el set de Training y de Test son similares, también vemos que el accuracy del modelo es superior al baseline y obtenemos un kappa de 0.65 en el test set.
 
 ### 2.3 Naive Bayes
 
 ```{r naive}
 
-data_model_naive = na.omit(data[, -c(1,8,20)])
+data_model_naive = na.omit(data[, -c(1,8)])
 
 set.seed(500) 
 trainIndex <- createDataPartition(data_model_naive$tipo, p = .8, list = FALSE, times = 1)
-length(trainIndex)
+#length(trainIndex)
 
 webTrain <- data_model_naive[ trainIndex,]
 webTest <-  data_model_naive[-trainIndex,]
@@ -311,27 +335,32 @@ model_nb5 <- train(webTrainX, webTrain$tipo,
                    method = "naive_bayes",
                    tuneGrid=tgrid,
                    trControl = trainControl)
-model_nb5
+
 
  
 ```
+
+Para el ajusto del modelo de Naive Bayes se utilizaron diferentes valores para el parámetro de laplace 
 
 ```{r naive confusion matrix}
 model_nb5$bestTune
 
+print("Test")
 predictions_test<-predict(object=model_nb5, webTest)
- confusionMatrix(predictions_test, factor(webTest$tipo))
+ confusionMatrix(predictions_test, factor(webTest$tipo))$overall[1:2]
 
+ print("Training")
 predictions<-predict(object=model_nb5, webTrain)
- confusionMatrix(predictions, factor(webTrain$tipo))
+ confusionMatrix(predictions, factor(webTrain$tipo))$overall[1:2]
  
 ```
+El modelo que mejor ajuste presentó fue aquel con laplace = 10 usando la corrección de kernel y ajuste
 
 ### 2.4 Árbol de decisión
 
-```{r tree}
+```{r tree prepoda}
 
-data_model_tree = na.omit(data[, -c(1,8,20)])
+data_model_tree = na.omit(data[, -c(1,8)])
 
 set.seed(500) 
 trainIndex <- createDataPartition(data_model_tree$tipo, p = .8, list = FALSE, times = 1)
@@ -340,23 +369,34 @@ length(trainIndex)
 webTrain <- data_model_tree[ trainIndex,]
 webTest <-  data_model_tree[-trainIndex,]
 
-trainControl=trainControl(method="cv", number=5)
-set.seed(9876)
-model_arbol1 <- train(tipo~., webTrain, 
-                      method='rpart',
-                      trControl = trainControl)
-model_arbol1
-plot(model_arbol1)
+grid <- data.frame(cp=c(0)) #Fijamos en 0 el parámetro de complejidad eliminando la poda controlada por Caret
+modelo_arbol2 <- train(tipo~., data = data_model_tree, method = "rpart",
+                      tuneGrid=grid,
+                      control = rpart.control(
+                      minsplit = 2, #min instancias para intentar split de un nodo, por defecto es 20
+                      minbucket = 1, #min instancias en un nodo hoja terminal, por defecto minsplit/3
+                      maxdepth = 10 #max depth, por defecto es 30
+                    ))
+#rpart.plot(modelo_arbol2$finalModel)
 ```
 
 ```{r tree confusion matrix}
 m <- model_arbol1$finalModel
-plot(m)
-text(m, cex=0.7)
 
 rpart.plot(m)  
 m$variable.importance # índice de importancia (no normalizada)
 plot(m$variable.importance)
+```
+
+```{r tree post poda}
+m2 <- rpart(LEAVE~., data = churnTrain,
+            control = rpart.control(
+              cp=0, # sin prepoda de complejidad
+              minsplit = 2, #min instancias para intentar split de un nodo, por defecto es 20
+              minbucket = 1, #min instancias en un nodo hoja terminal, por defecto minsplit/3
+              maxdepth = 10, #max depth, por defecto es 30
+              xval=10 # rpart hace validación cruzada sobre el set de entranamiento para estimar los errores relativos
+              ))
 ```
 
 ### 2.5 Modelo de ensamble: Random Forest
