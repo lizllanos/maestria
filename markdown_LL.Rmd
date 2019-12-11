@@ -155,7 +155,6 @@ data_m = melt(data_num)
 a1 = ggplot(data_m, aes(variable, value))+geom_boxplot() + facet_wrap(~variable, scales = "free") + ggtitle("Con datos atípicos") + ylab("Valores")+ xlab("")
 a2 = ggplot(data_m, aes(value))+geom_histogram() + facet_wrap(~variable, scales = "free")+ ggtitle("Con datos atípicos") + ylab("Frecuencia")+ xlab("")
 
-grid.arrange(a1, a2, nrow = 1)
 # Análisis de datos atípicos
 
 
@@ -195,8 +194,11 @@ data_m = melt(data_num)
 a3 = ggplot(data_m, aes(variable, value))+geom_boxplot() + facet_wrap(~variable, scales = "free")+ ggtitle("Sin datos atípicos") + ylab("Valores")+ xlab("")
 a4 = ggplot(data_m, aes(value))+geom_histogram() + facet_wrap(~variable, scales = "free")+ ggtitle("Sin datos atípicos") + ylab("Frecuencia")+ xlab("")
 
-grid.arrange(a3, a4, nrow = 1)
+a1
+a3
 
+a2
+a4
 ```
 
 Finalmente se identifican 8 registros que presentan valores atípicos en la mayoría de las variables y se procede a eliminarlos de la base de datos. 
@@ -213,7 +215,7 @@ d2=ggplot(data, aes(largourl))+ geom_density(aes(fill=tipo),alpha=0.4) +labs(fil
 
 d3=ggplot(data, aes(numpaquetesdns))+ geom_density(aes(fill=tipo),alpha=0.4)+labs(fill="Tipo") 
 
-grid.arrange(d1, d2, d3, nrow = 1)
+grid.arrange(d1, d2, d3, nrow = 2)
 
 ```
 En el caso de las variables númericas se observa en los gráficos que para el largourl es más probable que una página web sea maligna cuando esta es mayor a 80. Para el caso del número de paquetes dns, se observa mayor probabilidad de tener una pág benigna cuando esta variable toma valores pequeños, menores a 1. La variable número de ip también nos ayuda a discriminar las páginas web pues aquellas que presentan valores inferiores a 6 tienden a ser malignas.
@@ -223,7 +225,7 @@ d4 = ggplot(data, aes(codificacion))+ geom_bar(aes(fill=tipo))+labs(fill="Tipo")
 d5 = ggplot(data, aes(os))+ geom_bar(aes(fill=tipo))+labs(fill="Tipo")
 d6 = ggplot(data, aes(pais))+ geom_bar(aes(fill=tipo))+labs(fill="Tipo")
 
-grid.arrange(d4, d5, d6, nrow = 1)
+grid.arrange(d4, d5, d6, nrow = 2)
 
 ```
 En cuanto a las variables categóricas vemos que en todas predomina que la página web sea benigna, en el caso del país se destaca que el que la página tenga como país a Estados Unidos en su mayoría son benignas. Entre los web servers que se registraron, Apache es el que tiene mayor frecuencia de páginas web malignas. La codificación más frecuente es UTF-8 seguida de la ISO
@@ -341,7 +343,7 @@ model_nb5 <- train(webTrainX, webTrain$tipo,
  
 ```
 
-El modelo que mejor ajuste presentó fue aquel con laplace = 10 usando la corrección de kernel y utilizando el ajuste, y se obtuvo un accuracy de 0.87 y un kappa de 0.58.
+El modelo que mejor ajuste presentó fue aquel con laplace = 10 usando la corrección de kernel y utilizando el ajuste. Se obtuvo un accuracy de 0.83 y un kappa de 0.47 en el set de test.
 
 ```{r naive confusion matrix}
 model_nb5$bestTune
@@ -367,7 +369,6 @@ data_model_tree = na.omit(data[, -c(1,8)])
 
 set.seed(500) 
 trainIndex <- createDataPartition(data_model_tree$tipo, p = .8, list = FALSE, times = 1)
-length(trainIndex)
 
 webTrain <- data_model_tree[ trainIndex,]
 webTest <-  data_model_tree[-trainIndex,]
@@ -379,10 +380,10 @@ model_arbol1 <- train(tipo~., webTrain,
                       trControl = trainControl)
 plot(model_arbol1)
 
-
+model_arbol1$bestTune
 ```
 
-En este escenario se observa que el mejor parámetro de complejidad CP es cuando está cercano a 0.05. Para este árbol vemos que la primera variable que ayuda a segmentar las páginas web es el país Estados Unidos, seguido del número de carácteres especiales, encontrando como umbral crítico 20, es decir, para páginas web con más de 20 carácteres especiales se identifica como maligna.
+En este escenario se observa que el mejor parámetro de complejidad CP es cuando está en 0.0348. Para este árbol vemos que la primera variable que ayuda a segmentar las páginas web es el país Estados Unidos, seguido del número de carácteres especiales, encontrando como umbral crítico 20, es decir, para páginas web con más de 20 carácteres especiales se identifica como maligna.
 
 ```{r}
 m <- model_arbol1$finalModel
@@ -397,9 +398,11 @@ predictions<-predict(object=model_arbol1, webTrain)
  confusionMatrix(predictions, factor(webTrain$tipo))$overall[1:2]
 
 ```
+
 El accuracy de éste árbol es de 0.9 y el kappa es de 0.519
 
 **Con pre-poda**
+
 Ahora ajustaremos un árbol de decisión utilizando la pre-poda, para esto definimos un set de posibles valores para la profundidad del árbol, para este caso variamos valores de 1 hasta 30.
 
 ```{r tree prepoda}
@@ -447,26 +450,24 @@ set.seed(9876)
                      minbucket = 1,
                      maxdepth=which.max(df$kappa)
                                      ))
- 
-   
- 
- 
- 
-   # Test
-  predicciones <- predict(modelopoda, newdata=webTest) #type "raw" por defecto
+
+```
+
+De acuerdo a los resultados del gráfico se identifica que el mejor accuracy se presenta cuando el árbol tiene una profundida de 8 niveles, tomando el valor de 0.94 en accuracy y 0.72 en kappa.
+
+```{r}
+ # Test
+  predicciones <- predict(modelopoda, newdata=webTest) 
   confusionMatrix(predicciones,webTest$tipo, mode = "everything")$overall[1:2]
   
   # Train
   predicciones <- predict(modelopoda, newdata=webTrain) 
   confusionMatrix(predicciones,webTrain$tipo, mode = "everything")$overall[1:2]
 
-  
-
 ```
 
-De acuerdo a los resultados del gráfico se identifica que el mejor accuracy se presenta cuando el árbol tiene una profundida de 8 niveles, tomando el valor de 0.94 en accuracy y 0.72 en kappa
-
 **Con post-poda**
+
 Finalmente realizamos un árbol decisión con post-poda, para esto generamos un árbol sin ningún nivel de complejidad para posteriormente ajustarlo.
 ```{r tree post poda}
 m2 <- rpart(tipo~., data = webTrain,
@@ -494,6 +495,11 @@ indice_corte = min(indices)
 umbral_corte_cp = m2$cptable[indice_corte,1]
 umbral_corte_cp
 
+```
+
+El anterior gráfico nos sugiere que un nivel de complejidad igual a CP=0.014 nos arroja el mejor modelo.
+
+```{r}
 m2 = prune(m2, cp=umbral_corte_cp)
 rpart.plot(m2)
 
@@ -508,9 +514,7 @@ predictions<-predict(object=m2, webTrain, type='class')
 
 ```
 
-El anterior gráfico nos sugiere que un nivel de complejidad igual a 0.14 nos arroja el mejor accuracy con un valor de 0.93 y un kappa de 0.65
-
-También observamos que el árbol final tiene 8 niveles y que al igual que el primer árbol se observa que las 2 primeras variables de segmentación son País Estados Unidos y el número de carácteres especiales.
+También observamos que el árbol final tiene 8 niveles y que al igual que el primer árbol se observa que las 2 primeras variables de segmentación son País Estados Unidos y el número de carácteres especiales. El accuracy del modelo ajustado arroja un valor de 0.93 y un kappa de 0.65
 
 ### 2.5 Modelo de ensamble: Random Forest
 
@@ -568,17 +572,22 @@ tunegrid <- expand.grid(.mtry=8)
 set.seed(seed)
 fit1 <- train(tipo~., data=webTrain, method="rf", metric=metric, tuneGrid=tunegrid, trControl=control, ntree=1500)
 
+
+```
+
+De acuerdo al gráfico se establece que el número óptimo de árboles es 1500, con esta configuración de parámetros obtenemos un accuracy de 0.96 y un kappa de 0.839. 
+
+```{r}
 # Test
 predictions_test<-predict(object=fit1, webTest)
  confusionMatrix(predictions_test, factor(webTest$tipo))$overall[1:2]
 
 # Training
 rfs = summary(results)
-# Accuracy
-rfs$statistics[[1]][3,4]
 
-# Kappa
-rfs$statistics[[2]][3,4]
+trf = c("Accuracy"=rfs$statistics[[1]][3,4],"Kappa"=rfs$statistics[[2]][3,4])
+
+trf
 
 mf = fit1$finalModel
 imp = data.frame("var"=rownames(importance(mf)),"value"=importance(mf))
@@ -592,17 +601,41 @@ p <- ggplot(imp, aes(x=reorder(var, MeanDecreaseGini), y=MeanDecreaseGini)) +
 
 p
 ```
-
-De acuerdo al gráfico se establece que el número óptimo de árboles es 1500, con esta configuración de parámetros obtenemos un accuracy de 0.96 y un kappa de 0.839. En cuanto a la importancia de las variables, en este modelo, se identifica como a los puertos remotos como la variable más importante, seguido del número de paquetes enviados y el largo de la url; también se destaca que la variable que menos aporta al modelo es el tipo de codificación y el servidor web.
+En cuanto a la importancia de las variables, en este modelo, se identifica como a los puertos remotos como la variable más importante, seguido del número de paquetes enviados y el largo de la url; también se destaca que la variable que menos aporta al modelo es el tipo de codificación y el servidor web.
 
 ### 2.6 Conclusión
 
 Para los diferentes modelos de clasificación ajustados se presentan las métricas del Accuracy y el Kappa tanto en el set de entrenamiento como el set de test, esto con el fin de evaluar si existe sobreajuste en los modelos escogidos.
 
 
+|  **Modelo** | **Set de datos** | **Configuración** | **Accuracy** | **Kappa** |
+| :---: | :---: | :---: | :---: | :---: |
+|  Logístico | Test | 12 variables, AIC = 689.4 | 0.93 | 0.65 |
+|   | Entrenamiento |  | 0.93 | 0.63 |
+|  Naive Bayes | Test | Laplace=10, usekernel=TRUE, adjust=1 | 0.84 | 0.47 |
+|   | Entrenamiento |  | 0.88 | 0.59 |
+|  Árbol de decisión 1 | Test | Sin procesamiento, CP= 0.0348 | 0.91 | 0.52 |
+|   | Entrenamiento |  | 0.93 | 0.63 |
+|  Árbol de decisión 2 | Test | Pre-poda, depth=8 | 0.94 | 0.72 |
+|   | Entrenamiento |  | 0.99 | 0.94 |
+|  Árbol de decisión 3 | Test | Post-poda, CP=0.014 | 0.94 | 0.66 |
+|   | Entrenamiento |  | 0.96 | 0.77 |
+|  Random Forest | Test | ntree = 1500, mtry = 8 | 0.97 | 0.84 |
+|   | Entrenamiento |  | 0.97 | 0.82 |
 
+```{r}
+setwd("C:/Users/lllanos/Dropbox/ICESI/Semestre I/Fundamentos de analítica I/Proyecto final")
 
+df = read.csv("resumen.csv", header = T)
+df =melt(df, id.vars = c("Modelo", "set"))
+ggplot(df, aes(Modelo,value, color=set))+ geom_point( size=2)+ coord_flip()+facet_grid(~variable)+
+  geom_hline(data=filter(df, variable=="Accuracy"), aes(yintercept=0.87), colour="black")
 
+```
+
+En conclusión, el modelo que presentó mejor desempeño para dectectar cuando una página web es beninga o maligna fue Random Forest, con un Accuracy de 0.97 y un Kappa de 0.84, además fue el modelo con el menor sobreajuste.
+
+También se destaca que la mayoría de los modelos tuvieron un Accuracy superior al baseline (0.87, línea negra) a excepción del modelo Naive Bayes, el cual fue el de peor desempeño de acuerdo a las métricas analizadas.
 
 ## 3. Cambio de representación y segmentación de los casos
 
