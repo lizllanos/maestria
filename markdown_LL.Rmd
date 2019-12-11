@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+#knitr::opts_chunk$set(echo = FALSE)
 knitr::opts_chunk$set(warning = FALSE)
 knitr::opts_chunk$set(message = FALSE)
 
@@ -201,14 +201,14 @@ ggplot(data, aes(numpaquetesdns))+ geom_density(aes(fill=tipo),alpha=0.4)+labs(f
 
 
 ```
-
+En el caso de las variables númericas se observa en los gráficos que para el largourl es más probable que una página web sea maligna cuando esta es mayor a 80. Para el caso del número de paquetes dns, se observa mayor probabilidad de tener una pág benigna cuando esta variable toma valores pequeños, menores a 1. La variable número de ip también nos ayuda a discriminar las páginas web pues aquellas que presentan valores inferiores a 6 tienden a ser malignas.
 ```{r plot cat}
 ggplot(data, aes(codificacion))+ geom_bar(aes(fill=tipo))+labs(fill="Tipo")
 ggplot(data, aes(os))+ geom_bar(aes(fill=tipo))+labs(fill="Tipo")
 ggplot(data, aes(pais))+ geom_bar(aes(fill=tipo))+labs(fill="Tipo")
 
 ```
-
+En cuanto a las variables categóricas vemos que en todas predomina que la página web sea benigna, en el caso del país se destaca que el que la página tenga como país a Estados Unidos en su mayoría son benignas. Entre los web servers que se registraron, Apache es el que tiene mayor frecuencia de páginas web malignas. La codificación más frecuente es UTF-8 seguida de la ISO
 
 ## 2. Ajuste de modelos predictivos
 
@@ -354,10 +354,45 @@ predictions<-predict(object=model_nb5, webTrain)
  confusionMatrix(predictions, factor(webTrain$tipo))$overall[1:2]
  
 ```
-El modelo que mejor ajuste presentó fue aquel con laplace = 10 usando la corrección de kernel y ajuste
+El modelo que mejor ajuste presentó fue aquel con laplace = 10 usando la corrección de kernel y utilizando el ajuste.
 
 ### 2.4 Árbol de decisión
 
+Ahora procedemos a ajustar árboles de decisión tipo CART, analizaremos 3 escenarios:
+
+**Sin procesar**
+```{r sin procesar}
+
+data_model_tree = na.omit(data[, -c(1,8)])
+
+set.seed(500) 
+trainIndex <- createDataPartition(data_model_tree$tipo, p = .8, list = FALSE, times = 1)
+length(trainIndex)
+
+webTrain <- data_model_tree[ trainIndex,]
+webTest <-  data_model_tree[-trainIndex,]
+
+trainControl=trainControl(method="cv", number=5)
+set.seed(9876)
+model_arbol1 <- train(tipo~., webTrain, 
+                      method='rpart',
+                      trControl = trainControl)
+plot(model_arbol1)
+
+m <- model_arbol1$finalModel
+rpart.plot(m) 
+
+print("Test")
+predictions_test<-predict(object=model_arbol1, webTest)
+ confusionMatrix(predictions_test, factor(webTest$tipo))$overall[1:2]
+
+ print("Training")
+predictions<-predict(object=model_arbol1, webTrain)
+ confusionMatrix(predictions, factor(webTrain$tipo))$overall[1:2]
+
+```
+
+**Con pre-poda**
 ```{r tree prepoda}
 
 data_model_tree = na.omit(data[, -c(1,8)])
@@ -369,27 +404,54 @@ length(trainIndex)
 webTrain <- data_model_tree[ trainIndex,]
 webTest <-  data_model_tree[-trainIndex,]
 
-grid <- data.frame(cp=c(0)) #Fijamos en 0 el parámetro de complejidad eliminando la poda controlada por Caret
-modelo_arbol2 <- train(tipo~., data = data_model_tree, method = "rpart",
-                      tuneGrid=grid,
-                      control = rpart.control(
-                      minsplit = 2, #min instancias para intentar split de un nodo, por defecto es 20
-                      minbucket = 1, #min instancias en un nodo hoja terminal, por defecto minsplit/3
-                      maxdepth = 10 #max depth, por defecto es 30
-                    ))
-#rpart.plot(modelo_arbol2$finalModel)
+depths = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 18, 20, 25, 30)
+accuracies = c()
+kappas = c()
+
+for(depth in depths) {
+  set.seed(9876) # el valor de la semilla, en sí, no es importante, solo que se utilice siempre el mismo
+  grid <- data.frame(cp=c(0))
+  modelo <- train(tipo~., data = webTrain, method = "rpart",
+                   tuneGrid=grid,
+                   control = rpart.control(
+                     minsplit = 2,
+                     minbucket = 1,
+                     maxdepth=depth
+                   ))
+  predicciones <- predict(modelo, newdata=webTest) #type "raw" por defecto
+  cm <- confusionMatrix(predicciones,webTest$tipo, mode = "everything")
+  accuracies <- c(accuracies, cm$overall[1])
+  kappas <- c(kappas, cm$overall[2])
+}
+
+df <- data.frame(depth=depths, accuracy=accuracies, kappa=kappas)
+ggplot(df, aes(depth)) + 
+  geom_line(aes(y = accuracy, colour = "accuracy")) + 
+  geom_line(aes(y = kappa, colour = "kappa"))
+
+
+
+ modelopoda <- train(tipo~., data = webTrain, method = "rpart",
+                   tuneGrid=grid,
+                   control = rpart.control(
+                     minsplit = 2,
+                     minbucket = 1,
+                     maxdepth=which.max(df$kappa)
+ 
+                     
+                                     ))
+ 
+  m <- modelopoda$finalModel 
+ #rpart.plot(m) 
+ df[which.max(df$kappa),]
+  predicciones <- predict(modelo, newdata=webTrain) #type "raw" por defecto
+  cm <- confusionMatrix(predicciones,webTrain$tipo, mode = "everything")
+ 
 ```
 
-```{r tree confusion matrix}
-m <- model_arbol1$finalModel
-
-rpart.plot(m)  
-m$variable.importance # índice de importancia (no normalizada)
-plot(m$variable.importance)
-```
-
+**Con post-poda**
 ```{r tree post poda}
-m2 <- rpart(LEAVE~., data = churnTrain,
+m2 <- rpart(tipo~., data = webTrain,
             control = rpart.control(
               cp=0, # sin prepoda de complejidad
               minsplit = 2, #min instancias para intentar split de un nodo, por defecto es 20
@@ -397,12 +459,87 @@ m2 <- rpart(LEAVE~., data = churnTrain,
               maxdepth = 10, #max depth, por defecto es 30
               xval=10 # rpart hace validación cruzada sobre el set de entranamiento para estimar los errores relativos
               ))
+
+ggplot(data.frame(m2$cptable), aes(x=CP, y=rel.error)) +
+  geom_point(size=2) +
+  scale_x_continuous(limits = c(0, 0.25), breaks = seq(0,0.25, 0.02)) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2))
+
+plotcp(m2)
+
+
+i = which.min(m2$cptable[,4])
+lim_inferior = m2$cptable[i,4] - m2$cptable[i,5]
+lim_superior = m2$cptable[i,4] + m2$cptable[i,5]
+print(paste("Intervalo de error: [", lim_inferior, ", ", lim_superior, "]"))
+
+
+
+indices = which((m2$cptable[,4] >= lim_inferior) & (m2$cptable[,4] <= lim_superior))
+indice_corte = min(indices)
+umbral_corte_cp = m2$cptable[indice_corte,1]
+umbral_corte_cp
+
+m2 = prune(m2, cp=umbral_corte_cp)
+m2$cptable
+rpart.plot(m2)
+
+
+print("Test")
+predictions_test<-predict(object=m2, webTest, type='class')
+ confusionMatrix(predictions_test, factor(webTest$tipo))$overall[1:2]
+
+ print("Training")
+predictions<-predict(object=m2, webTrain, type='class')
+ confusionMatrix(predictions, factor(webTrain$tipo))$overall[1:2]
+
+
 ```
 
 ### 2.5 Modelo de ensamble: Random Forest
+Para el ensamble ajustaremos un Random Forest, para el ajuste de la complejidad y el número de árboles se realizan los ajustes para diferentes escenarios.
+
+```{r random f}
+# Manual Search
+seed = 456
+metric = "Accuracy"
+control <- trainControl(method="cv", number=5, repeats=1, search="grid")
+tunegrid <- expand.grid(.mtry=c(sqrt(17)))
+modellist <- list()
+for (ntree in c(500,1000, 1500, 2000, 2500)) {
+	set.seed(seed)
+	fit <- train(tipo~., data=webTrain, method="rf", metric=metric, tuneGrid=tunegrid, trControl=control, ntree=ntree)
+	key <- toString(ntree)
+	modellist[[key]] <- fit
+}
+# compare results
+results <- resamples(modellist)
+summary(results)
+dotplot(results)
+
+#tunegrid <- expand.grid(.mtry=2:6)
+
+fit1 <- train(tipo~., data=webTrain, method="rf", metric=metric, tuneGrid=tunegrid, trControl=control, ntree=500)
+
+print("Test")
+predictions_test<-predict(object=fit1, webTest)
+ confusionMatrix(predictions_test, factor(webTest$tipo))$overall[1:2]
+
+ print("Training")
+predictions<-predict(object=fit1, webTrain)
+ confusionMatrix(predictions, factor(webTrain$tipo))$overall[1:2]
+
+
+```
 
 
 ### 2.6 Conclusión
+
+Para los diferentes modelos de clasificación ajustados se presentan las métricas del Accuracy y el Kappa tanto en el set de entrenamiento como el set de test, esto con el fin de evaluar si existe sobreajuste en los modelos escogidos.
+
+
+
+
 
 ## 3. Cambio de representación y segmentación de los casos
 
