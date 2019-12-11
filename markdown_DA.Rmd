@@ -142,7 +142,7 @@ fviz_screeplot(res.pca, addlabels = TRUE, ylim = c(0, 80))
 
 ```
 
-De los resultados obtenidos se puede observar que para acumular un 90% de la información de los datos originales, es necesario retener 4 componentes principales que acumulan el 93.3% de la variabilidad total observada.
+De los resultados obtenidos se puede observar que para acumular un 90% de la información de los datos originales, es necesario retener 4 componentes principales que acumulan el 91.3% de la variabilidad total observada.
 
 ```{r Componentes}
 
@@ -150,8 +150,7 @@ fviz_pca_biplot(res.pca)
 
 ```
 
-Del grafico de individuos y variables se puede observar que las variables largourl y numcarespeciales estan en la misma dirección de la componente 2, es decir se espera que estas variables aporten de manera significativa en la construcción de la componente 2, mientras que las variables asociadas a las transferencias cliente-servidor se encuentan en la misma dirección de la componente 1, por lo tanto la componente 1 va a representar muy bien estas variables, finalmente las variables numpaquetesdns y numeroips son importantes en la construcción de ambas componentes, en cuanto a las paginas web se puede observar que se distinguen 3 grupos diferentes en el primer plano factorial y adiconal a esto hay una pagina web atipica que presenta valores extremos en todas las variables.
-
+El grafico de individuos y variables se puede observar que las variables largourl y numcarespeciales se encuentran en dirección opuesta a todas las demás variables,es decir presentan un comportamiento inverso con respecto a los demás, adicionalmente estas variables se encuentran aportando a la construcción de las dos primeras componentes, mientras que las variables asociadas a las transferencias cliente-servidor se encuentran en la misma dirección de la componente 1, por lo tanto la componente 1 va a representar muy bien estas variables, finalmente las variables numpaquetesdns y numeroips son importantes en la construcción de ambas componentes, en cuanto a las páginas web se puede observar que se distinguen 3 grupos diferentes en el primer plano factorial.
 
 ```{r}
 load_cor <- t(cor(res.pca$ind$coord[,1:4,drop=F],data_3))
@@ -167,9 +166,11 @@ ggplot(aes( x = factor(Var1), y=value),data =data_plot ) +
 
 ```
 
-Finalmente se muestran la contribucción de cada una de las variables a las primeras 4 componentes en terminos de la correlación de pearson, donde finalmente se comprueba que la primera componente esta compuesta principalmente de las variables asociadas a las transferencias cliente-servidor, mientras que la segunda componente se encuentra compuesta principalmente por las variables largourl y numcarespeciales, adicionalmente se observa que el largoheader esta generando en su mayoria el patron de la tercera componente.
+Finalmente se muestran la contribucción de cada una de las variables a las primeras 4 componentes en terminos de la correlación de pearson, donde finalmente se comprueba que la primera componente está compuesta principalmente de las variables asociadas a las transferencias cliente-servidor con correlaciones en su mayoria superiores a 0.6, mientras que la segunda componente se encuentra compuesta principalmente por las variables largourl, numcarespeciales y numbytesenviados, adicionalmente se observa que el puertosremotos está generando en su mayoria el patron de la tercera componente,la cuarta componente está construida principalmente de la variables largoheader. 
 
 ## Clustering K-means
+
+Inicialmente se grafica el primer plano factorial considerando 1,2,3 y 4 cluster.
 
 ```{r kmeans}
 
@@ -191,6 +192,9 @@ grid.arrange(c0,c1,c2,c3,ncol=2)
 
 
 ```
+
+De manera visual solo enfocándose en el primer plano factorial el número de clúster ideal que se ajusta mejor al conjunto de datos parece ser el número 3.
+
 
 ## Determinación del número de clusters K
 
@@ -228,6 +232,10 @@ grid()
 
 ```
 
+En este caso tenemos un codo muy evidente donde a partir del clúster número 3 se observan reducciones poco significativas en el WSS, por lo tanto, el clúster sugerido utilizando el método del codo seria el número 3, lo ideal en este punto sería escoger clústers pequeños ya que a medida que crece el número de clúster es más difícil de interpretar estos resultados.
+
+
+
 ### Método de Calinski-Harabasz
 
 ```{r  Calinski}
@@ -240,12 +248,137 @@ summary(kmClusteringRuns.ch)
 val_ch <- kmClusteringRuns.ch$crit
 rm(kmClusteringRuns.ch)
 
-plot(val_ch) 
-
+plot(val_ch,type="b",las=1,xlab="K",ylab="Valor del Calinski-Harabasz") 
+grid()
 
 ```
+
+Encontramos que según el criterio Calinski Harabasz el mejor particionamiento es con k=9, pero como tenemos la restricción de buscar de 3 a 5 clusters, podemos ver que k=4 tiene valor de CH mayor en comparación con 3 y 5 clusters.
+
+
+### Método de la silueta
 
 ```{r silueata}
 
+library(cluster)
+
+distancias <- dist(data_3)
+
+# Iteramos de K=2 a 8
+val_k <- 2:10
+val_sil<- 0
+for(k in val_k) {
+  resultadoKMeansK <- kmeans(data_3, centers = k, nstart =30, iter.max=150)
+  sil <- silhouette(resultadoKMeansK$cluster, dist(data_3))
+  val_sil[k-1] <- mean(sil[, "sil_width"])
+}
+
+rm(distancias, resultadoKMeansK, sil)
+gc()
+
+val_sil
+
+plot(val_k, val_sil,las=1,
+       type = "b", pch = 19, frame = FALSE, 
+       xlab = "K",
+       ylab = "Silueta promedio")
+grid()
+
+
+
 ```
+
+Encontramos que, según el criterio de silueta promedio, entre 3 y 5, el mejor particionamiento se logra con K=3 con una silueta promedio de 0.78, ahora veamos los perfiles de las siluetas de los 3 clusterings (con K igual a 3, 4 y 5).
+
+
+```{r silue}
+k <- 3
+set.seed(1234)
+kmClustering3 <- kmeans(data_3, k, nstart=100, iter.max=150)
+silueta <- silhouette(kmClustering3$cluster, dist(data_3))
+f1 =fviz_silhouette(silueta, label = FALSE, print.summary = TRUE, main="Silueta para K=3")
+
+
+k <- 4
+set.seed(1234)
+kmClustering4 <- kmeans(data_3, k, nstart=100, iter.max=150)
+silueta <- silhouette(kmClustering4$cluster, dist(data_3))
+f2=fviz_silhouette(silueta, label = FALSE, print.summary = TRUE, main="Silueta para K=4")
+
+k <- 5
+set.seed(1234)
+kmClustering5 <- kmeans(data_3, k, nstart=100, iter.max=150)
+silueta <- silhouette(kmClustering5$cluster, dist(data_3))
+f3=fviz_silhouette(silueta, label = FALSE, print.summary = TRUE, main="Silueta para K=5")
+
+grid.arrange(f1,f2,f3,ncol=2)
+
+```
+
+Podemos ver que con K=5 las siluetas de cada cluster son peores que con K=3 o K=4. En estos dos útlimos clusterings, tenemos un gran cluster que posee valores de silueta positivos, y no se presentan sitios web con siluetas negativas.
+
+### Bootstrap de los cluster
+
+```{r jacar,results=FALSE}
+set.seed(3333)
+modelo_bootstrap_k3 <- clusterboot(data_3, clustermethod = kmeansCBI, krange=3, B=100, iter.max=150)
+
+modelo_bootstrap_k4 <- clusterboot(data_3, clustermethod = kmeansCBI, krange=4, B=100, iter.max=150)
+
+modelo_bootstrap_k5 <- clusterboot(data_3, clustermethod = kmeansCBI, krange=4, B=100, iter.max=150)
+
+```
+
+
+
+```{r, bost}
+
+k_3=cbind.data.frame(mean_jacard=modelo_bootstrap_k3$bootmean #vector de las estabilidades de cada cluster (promedio de Jaccard)
+, disolucion=modelo_bootstrap_k3$bootbrd # número de disoluciones de los clusters en los B runs ejecutados (Jaccard < 0.5)
+, recuperaciones=modelo_bootstrap_k3$bootrecover )# número de recuperaciones de los clusters en los B runs ejecutados (Jaccard > 0.75)
+
+k_3
+
+
+```
+
+
+
+```{r}
+k_4=cbind.data.frame(mean_jacard=modelo_bootstrap_k4$bootmean #vector de las estabilidades de cada cluster (promedio de Jaccard)
+, disolucion=modelo_bootstrap_k4$bootbrd # número de disoluciones de los clusters en los B runs ejecutados (Jaccard < 0.5)
+, recuperaciones=modelo_bootstrap_k4$bootrecover )# número de recuperaciones de los clusters en los B runs ejecutados (Jaccard > 0.75)
+
+k_4 
+
+
+```
+
+```{r}
+k_5=cbind.data.frame(mean_jacard=modelo_bootstrap_k5$bootmean #vector de las estabilidades de cada cluster (promedio de Jaccard)
+, disolucion=modelo_bootstrap_k5$bootbrd # número de disoluciones de los clusters en los B runs ejecutados (Jaccard < 0.5)
+, recuperaciones=modelo_bootstrap_k5$bootrecover )# número de recuperaciones de los clusters en los B runs ejecutados (Jaccard > 0.75)
+
+k_5
+
+
+resumen= cbind.data.frame(c(3,4,5),rbind.data.frame(apply(k_3,2,mean),apply(k_4,2,mean),apply(k_5,2,mean)))
+colnames(resumen)=c("k",colnames(k_5))
+resumen
+
+```
+
+Del resumen general se puede observar que en promedio el particionamiento k=5 fue el que presentó mejores resultados, clúster estables con promedio de Jaccard en general de  0.87 en promedio, bajas tasas de disolución con un promedio de 10 para todos los clusters y una tasa de recuperación media de 79.
+
+### Resumen de selección del K
+
+A continuación se muestra un resumen de las metodologías utilizadas para seleccionar el número de particionamientos en los datos.
+
+
+**Criterio**|**K=3**|**K=4**|**K=5**
+:-----:|:-----:|:-----:|:-----:
+Método del codo|X| | 
+Método de Calinski-Harabasz| |X| 
+Método de la silueta|X| | 
+Bootstrap de los cluster| | |X
 
