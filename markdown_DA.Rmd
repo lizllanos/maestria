@@ -153,7 +153,9 @@ fviz_pca_biplot(res.pca)
 El grafico de individuos y variables se puede observar que las variables largourl y numcarespeciales se encuentran en dirección opuesta a todas las demás variables,es decir presentan un comportamiento inverso con respecto a los demás, adicionalmente estas variables se encuentran aportando a la construcción de las dos primeras componentes, mientras que las variables asociadas a las transferencias cliente-servidor se encuentran en la misma dirección de la componente 1, por lo tanto la componente 1 va a representar muy bien estas variables, finalmente las variables numpaquetesdns y numeroips son importantes en la construcción de ambas componentes, en cuanto a las páginas web se puede observar que se distinguen 3 grupos diferentes en el primer plano factorial.
 
 ```{r}
-load_cor <- t(cor(res.pca$ind$coord[,1:4,drop=F],data_3))
+comp <- data.frame(res.pca$ind$coord[,1:4,drop=F])
+
+load_cor <- t(cor(comp,data_3))
 data_plot=melt(load_cor)
 
 ggplot(aes( x = factor(Var1), y=value),data =data_plot ) +
@@ -374,11 +376,132 @@ Del resumen general se puede observar que en promedio el particionamiento k=5 fu
 
 A continuación se muestra un resumen de las metodologías utilizadas para seleccionar el número de particionamientos en los datos.
 
-
 **Criterio**|**K=3**|**K=4**|**K=5**
 :-----:|:-----:|:-----:|:-----:
 Método del codo|X| | 
 Método de Calinski-Harabasz| |X| 
 Método de la silueta|X| | 
 Bootstrap de los cluster| | |X
+
+Según el resumen de los criterios de selección del K, K=3 es seleccionado por dos métodos, mientras que k=4 y k=5 son seleccionados solo por un método, por lo tanto, el número de clúster ideal sería K=3, dadas sus mejores métricas de WSS y silueta, aunque K=4 no estaría desacertado dados el Método de Calinski-Harabasz y buenos valores de clusterboot.  
+
+
+### Caracterización de los clusters
+
+Con el objetivo de tratar de dar caracteristicas a los clusters encontrados se realizaron graficos de densidad para cada variable particionada por cada clúster.  
+
+```{r caracter}
+
+fviz_cluster(kmClustering1, data_3, geom="point")
+cluster_kmeans <- kmClustering1$cluster
+data_3$clusters <- as.factor(cluster_kmeans)
+
+
+ p1 <- ggplot(data_3, aes(x=largourl)) + 
+  geom_density(aes(group=clusters, colour=clusters, fill=clusters), alpha=0.1) +
+  scale_colour_manual(values=rainbow(3))
+  
+ p2 <- ggplot(data_3, aes(x=numcarespeciales)) + 
+  geom_density(aes(group=clusters, colour=clusters, fill=clusters), alpha=0.1) +
+  scale_colour_manual(values=rainbow(3))
+
+ p3 <- ggplot(data_3, aes(x=numeroips)) + 
+  geom_density(aes(group=clusters, colour=clusters, fill=clusters), alpha=0.1) +
+  scale_colour_manual(values=rainbow(3))
+  
+ p4 <- ggplot(data_3, aes(x=numpaquetestcp)) + 
+  geom_density(aes(group=clusters, colour=clusters, fill=clusters), alpha=0.1) +
+  scale_colour_manual(values=rainbow(3))
+  
+ p5 <- ggplot(data_3, aes(x=numbytes)) + 
+  geom_density(aes(group=clusters, colour=clusters, fill=clusters), alpha=0.1) +
+  scale_colour_manual(values=rainbow(3))
+  
+ p6 <- ggplot(data_3, aes(x=numpaquetesenviados)) + 
+  geom_density(aes(group=clusters, colour=clusters, fill=clusters), alpha=0.1) +
+  scale_colour_manual(values=rainbow(3))
+  
+ p7 <- ggplot(data_3, aes(x=numbytesrecibidos)) + 
+  geom_density(aes(group=clusters, colour=clusters, fill=clusters), alpha=0.1) +
+  scale_colour_manual(values=rainbow(3))
+  
+ p8 <- ggplot(data_3, aes(x=numpaquetesgenerados)) + 
+  geom_density(aes(group=clusters, colour=clusters, fill=clusters), alpha=0.1) +
+  scale_colour_manual(values=rainbow(3))
+  
+ p9 <- ggplot(data_3, aes(x=numpaquetesrecibidos)) + 
+  geom_density(aes(group=clusters, colour=clusters, fill=clusters), alpha=0.1) +
+  scale_colour_manual(values=rainbow(3))
+
+ p10 <- ggplot(data_3, aes(x=numpaquetesdns)) + 
+  geom_density(aes(group=clusters, colour=clusters, fill=clusters), alpha=0.1) +
+  scale_colour_manual(values=rainbow(3))
+  
+ grid.arrange(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,ncol=3)
+ 
+
+```
+
+Los tres segmentos encontrados tienen comportamientos bien definidos:
+
+* Clúster rojo( 8 páginas web)
+    * pocos caracteres en la url 
+    * pocos caracteres especiales en url
+    * pocos números de parquetes DNS generados en la comunicación 
+    * grandes transferencias cliente-servidor
+* Clúster verde( 12 páginas web)
+    * pocos caracteres en la url 
+    * pocos caracteres especiales en url
+    * grandes números de parquetes DNS generados en la comunicación 
+    * valores medios en las transferencias cliente-servidor
+* Cluster azul ( 195 páginas web)
+    * pocos caracteres en la url 
+    * pocos caracteres especiales en url
+    * pocos números de parquetes DNS generados en la comunicación 
+    * pocas transferencias cliente-servidor
+
+## Cluster Jerarquico (usando Ward).
+
+Ahora se procede a usar un cluster jerarquico con K=3 para ver las diferencias de los resultados con la metodología K-means.
+
+```{r jerarquico}
+
+data_jerar <- data_3 %>% dplyr::select(-clusters) 
+
+distancias <- dist(data_jerar, method = "euclidean")
+as.matrix(distancias)[1:6, 1:6]
+
+modelo_ward <- hclust(distancias, method="ward.D2")
+modelo_ward
+
+clustersWard <- cutree(modelo_ward, k=3)
+
+comp$clustersWard <- as.factor(clustersWard)
+table(clustersWard)
+
+plot(modelo_ward, main="Dendrograma con Ward", ylab="Distancia", xlab = "Instancias", hang=-1)
+rect.hclust(modelo_ward, k=3)
+
+
+ggplot(data=data.frame(comp), aes(x=Dim.1, y=Dim.2)) +
+geom_point(size=2, alpha=.5, colour=clustersWard) + labs(title="Ward")
+
+
+comp$cluster_kmeans <- as.factor(c("A", "B", "C")[cluster_kmeans])
+
+table(cluster_kmeans, clustersWard) #En las filas se ve el primer argumento (los clusters de K-Means)
+# Podemos ver que intercambiando cambiando el orden de las columnas al de 3, 1 y 2 la logramos.
+# Esto implica cambiar los valores de los clusters usados al crear la columna factor en el dataframe
+comp$clustersWard <- as.factor(c("C", "A", "B")[clustersWard])
+table(comp$cluster_kmeans, comp$clustersWard)
+
+ggplot(data=comp, aes(x=Dim.1, y=Dim.2)) +
+  geom_point(size=5, alpha=.2, aes(color=cluster_kmeans)) + 
+  geom_point(size=2, alpha=1, aes(color=clustersWard)) +
+  labs(title="K-Means (color externo) vs Ward (color interno)", color="Clusters")
+
+```
+
+Al comparar K-Means con Ward, vemos una gran coincidencía excepto por dos páginas web . Esto se puede explicar por la similitud entre el criterio de K-Means de minimización de las distancias internas de los clusters (WSS) y de el de Ward de minimización de la varianza.
+
 
