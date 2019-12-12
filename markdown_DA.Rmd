@@ -106,7 +106,7 @@ data_m = melt(data_num)
 
 ```
 
-## Análisis de componentes principales
+## 3.1 Análisis de componentes principales (ACP)
 
 El primer paso para realizar el análisis de componentes principales es verificar que las variables se encuentren correlacionadas, este procedimiento se realizó tanto para los casos malignos como para todos los casos, con el objetivo de comparar los resultados.
 
@@ -170,7 +170,7 @@ ggplot(aes( x = factor(Var1), y=value),data =data_plot ) +
 
 Finalmente se muestran la contribucción de cada una de las variables a las primeras 4 componentes en terminos de la correlación de pearson, donde finalmente se comprueba que la primera componente está compuesta principalmente de las variables asociadas a las transferencias cliente-servidor con correlaciones en su mayoria superiores a 0.6, mientras que la segunda componente se encuentra compuesta principalmente por las variables largourl, numcarespeciales y numbytesenviados, adicionalmente se observa que el puertosremotos está generando en su mayoria el patron de la tercera componente,la cuarta componente está construida principalmente de la variables largoheader. 
 
-## Clustering K-means
+## 3.2 Clustering K-means
 
 Inicialmente se grafica el primer plano factorial considerando 1,2,3 y 4 cluster.
 
@@ -198,9 +198,9 @@ grid.arrange(c0,c1,c2,c3,ncol=2)
 De manera visual solo enfocándose en el primer plano factorial el número de clúster ideal que se ajusta mejor al conjunto de datos parece ser el número 3.
 
 
-## Determinación del número de clusters K
+### 3.2.1 Determinación del número de clusters K
 
-### Método del codo
+#### 3.2.1.1 Método del codo
 
 ```{r codo}
 
@@ -238,7 +238,7 @@ En este caso tenemos un codo muy evidente donde a partir del clúster número 3 
 
 
 
-### Método de Calinski-Harabasz
+#### 3.2.1.2 Método de Calinski-Harabasz
 
 ```{r  Calinski}
 library(fpc)
@@ -258,7 +258,7 @@ grid()
 Encontramos que según el criterio Calinski Harabasz el mejor particionamiento es con k=9, pero como tenemos la restricción de buscar de 3 a 5 clusters, podemos ver que k=4 tiene valor de CH mayor en comparación con 3 y 5 clusters.
 
 
-### Método de la silueta
+#### 3.2.1.3 Método de la silueta
 
 ```{r silueata}
 
@@ -319,7 +319,7 @@ grid.arrange(f1,f2,f3,ncol=2)
 
 Podemos ver que con K=5 las siluetas de cada cluster son peores que con K=3 o K=4. En estos dos útlimos clusterings, tenemos un gran cluster que posee valores de silueta positivos, y no se presentan sitios web con siluetas negativas.
 
-### Bootstrap de los cluster
+#### 3.2.1.4 Bootstrap de los cluster
 
 ```{r jacar,results=FALSE}
 set.seed(3333)
@@ -372,7 +372,7 @@ resumen
 
 Del resumen general se puede observar que en promedio el particionamiento k=5 fue el que presentó mejores resultados, clúster estables con promedio de Jaccard en general de  0.87 en promedio, bajas tasas de disolución con un promedio de 10 para todos los clusters y una tasa de recuperación media de 79.
 
-### Resumen de selección del K
+### 3.2.2 Resumen de selección del K
 
 A continuación se muestra un resumen de las metodologías utilizadas para seleccionar el número de particionamientos en los datos.
 
@@ -386,7 +386,7 @@ Bootstrap de los cluster| | |X
 Según el resumen de los criterios de selección del K, K=3 es seleccionado por dos métodos, mientras que k=4 y k=5 son seleccionados solo por un método, por lo tanto, el número de clúster ideal sería K=3, dadas sus mejores métricas de WSS y silueta, aunque K=4 no estaría desacertado dados el Método de Calinski-Harabasz y buenos valores de clusterboot.  
 
 
-### Caracterización de los clusters
+### 3.2.3 Caracterización de los clusters
 
 Con el objetivo de tratar de dar caracteristicas a los clusters encontrados se realizaron graficos de densidad para cada variable particionada por cada clúster.  
 
@@ -460,7 +460,7 @@ Los tres segmentos encontrados tienen comportamientos bien definidos:
     * pocos números de parquetes DNS generados en la comunicación 
     * pocas transferencias cliente-servidor
 
-## Cluster Jerarquico (usando Ward).
+## 3.3 Cluster Jerarquico (usando Ward).
 
 Ahora se procede a usar un cluster jerarquico con K=3 para ver las diferencias de los resultados con la metodología K-means.
 
@@ -483,6 +483,13 @@ plot(modelo_ward, main="Dendrograma con Ward", ylab="Distancia", xlab = "Instanc
 rect.hclust(modelo_ward, k=3)
 
 
+
+```
+
+En el dendograma se puede observar el corte para seleccionar tres particiones en los datos, el ultimo grupo de la derecha presenta un comportamiento un poco atipico en comparación de los demás clusters. 
+
+
+```{r comparacion}
 ggplot(data=data.frame(comp), aes(x=Dim.1, y=Dim.2)) +
 geom_point(size=2, alpha=.5, colour=clustersWard) + labs(title="Ward")
 
@@ -502,6 +509,30 @@ ggplot(data=comp, aes(x=Dim.1, y=Dim.2)) +
 
 ```
 
+
+
 Al comparar K-Means con Ward, vemos una gran coincidencía excepto por dos páginas web . Esto se puede explicar por la similitud entre el criterio de K-Means de minimización de las distancias internas de los clusters (WSS) y de el de Ward de minimización de la varianza.
 
+## 3.4 Conclusiones
 
+### 3.4.1 Análisis de componentes principales(PCA)
+
+Del análisis de componentes principales se puede concluir que es necesario retener 4 componentes para acumular un 90% de la variabilidad, adicional a esto se observa que las variables largourl y numcarespeciales presentan un comportamiento en dirección opuesta a todas las demás variables,es decir presentan un comportamiento inverso con respecto a los demás, adicionalmente hay un conjunto de variables asociadas a las transferencias cliente-servidor que se encuentran aportando a la primera componente, en cuanto a las páginas web se puede observar que se distinguen 3 grupos diferentes en el primer plano factorial.
+
+### 3.4.2 Cluster(k-means)
+
+Según el resumen de los criterios de selección del K, K=3 es seleccionado por dos métodos, mientras que k=4 y k=5 son seleccionados solo por un método, por lo tanto, el número de clúster ideal sería K=3, dadas sus mejores métricas de WSS y silueta, aunque K=4 no estaría desacertado dados el Método de Calinski-Harabasz y buenos valores de clusterboot.
+
+De la caracterización de los clusters se puede concluir que:
+
+El cluster rojo presenta pocos caracteres en la url, pocos caracteres especiales en la url, pocos números números de parquetes DNS generados en la comunicación y grandes transferencias cliente-servidor.
+
+El cluster verde presenta pocos caracteres en la url, pocos caracteres especiales en la url, grandes números números de parquetes DNS generados en la comunicación y valores medios en las transferencias cliente-servidor.
+
+El cluster azul pocos caracteres en la url, pocos caracteres especiales en la url, pocos números números de parquetes DNS generados en la comunicación y pocas transferencias cliente servidor.
+
+### 3.4.2 Cluster(jerarquico)
+
+En el dendograma se puede observar el corte para seleccionar tres particiones en los datos, el último grupo de la derecha presenta un comportamiento un poco atipico en comparación de los demás clusters. Al comparar K-Means con Ward, vemos una gran coincidencia excepto por dos páginas web. Esto se puede explicar por la similitud entre el criterio de K-Means de minimización de las distancias internas de los clusters (WSS) y de el de Ward de minimización de la varianza. 
+
+Como conclusión al realizar el análisis clúster se recomienda utilizar ambas metodologías ya que una complementa la otra, en este caso K-means dio excelentes resultados encontrando el K ideal, y el jerárquico presenta un buen comportamiento cuando se aplica utilizando el K encontrado, por ende se recomienda usar el clúster encontrado en el análisis clúster jerárquico ya que se distinguen mejor los grupos de manera visual en el primer plano factorial, aunque K-means no estaría desacertado dados sus buenos resultados en la selección del K.
