@@ -76,7 +76,7 @@ str(data)
 
 ```
 
-### 1.3 Recodificación de variables y eliminación de variables
+### 1.3 Recodificación y eliminación de variables
 
 Con el fin de poder incluir las variables categóricas en los diferentes modelos se realiza una recodificación a la variable: País, Codificación y OS
 

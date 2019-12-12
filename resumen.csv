@@ -1,0 +1,13 @@
+Modelo,set,Accuracy,Kappa
+Logístico,Test,0.93,0.65
+Logístico,Entrenamiento,0.93,0.63
+Naive_Bayes,Test,0.84,0.47
+Naive_Bayes,Entrenamiento,0.88,0.59
+Árbol_de_decisión,Test,0.91,0.52
+Árbol_de_decisión,Entrenamiento,0.93,0.63
+Árbol_de_decisión_pre,Test,0.94,0.72
+Árbol_de_decisión_pre,Entrenamiento,0.99,0.94
+Árbol_de_decisión_post,Test,0.94,0.66
+Árbol_de_decisión_post,Entrenamiento,0.96,0.77
+Random_Forest,Test,0.97,0.84
+Random_Forest,Entrenamiento,0.97,0.82
