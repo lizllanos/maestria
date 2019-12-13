@@ -1,21 +1,19 @@
+
 ---
-title: "Untitled"
-author: "D"
-date: "December 10, 2019"
+title: "Proyecto final Fundamentos de Analítica I"
+author: "Lizeth Llanos y Diego Agudelo"
+date: "12/8/2019"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+#knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
+```{r packages , results='hide', message=F, warning=F}
 library(reshape2)
 library(ggplot2)
 library(caret)
@@ -25,94 +23,628 @@ library(dplyr)
 library(stringr)
 library(XML)
 library(RCurl)
+library(MLeval)
+library(rpart)
+library(rpart.plot)
+library(gridExtra)
+library(grid)
+library(randomForest)
+library(MASS)
+library(factoextra)
+library(FactoMineR)
+library(fpc)
+library(cluster)
 library(corrplot)
 
+
+options(warn=-1)
+`%notin%` <- Negate(`%in%`)
+
+```
+El objetivo de este trabajo es implementar los diferentes modelos con el fin de caracterizar y predecir la condición de las páginas web identificadas como benignas o malignas
+
+```{r load data}
 # Lectura de datos --------------------------------------------------------
 setwd("D:/Master_CD/Fundamentos_1/proyecto_final")
 data = read.csv("PF-02-SitiosMalignos.csv", stringsAsFactors = FALSE)
 
-# Categorizaci?n de las variables.
+names(data) = tolower(names(data))
 
-attach(data)
+```
 
-'%notin%' <- Negate('%in%')
-'%ni%' <- Negate('%in%')
+## 1. Limpieza de datos
 
-Codificacion[Codificacion %in% c("ISO-8859","iso-8859-1","ISO-8859-1","windows-1251","windows-1252")] <- "iso"
-Codificacion[Codificacion %in% c("UTF-8","utf-8")] <- "utf-8"
-Codificacion[Codificacion %in% c("None")] <- "none"
+Para iniciar los análisis procedemos a realizar una limpieza a los datos que serán utilizados en el modelo. A continuación se describe paso a paso los procesos realizados.
 
-OS[grep("apache",OS,ignore.case =T,fixed=F )] <- "apache"
-OS[grep("ats",OS,ignore.case =T,fixed=F )] <- "apache"
-OS[grep("nginx",OS,ignore.case =T,fixed=F )] <- "nginx"
-OS[grep("None",OS,ignore.case =T,fixed=F )] <- "none"
-OS[grep("MICROSOFT-HTTPAPI",OS,ignore.case =T,fixed=F )] <- "microsoft-httpapi"
-OS[grep("Microsoft-IIS",OS,ignore.case =T,fixed=F )] <- "microsoft-iis"
-OS[ OS %ni% c("apache", "nginx","none","microsoft-httpapi","microsoft-iis") ] <- "none"
+### 1.1 Baseline
 
+El baseline de los datos es la condición de benigno con un 87.87% 
+```{r baseline, results=TRUE, echo=TRUE}
+# Baseline
+prop.table(table(data$tipo))*100
+
+```
+
+### 1.2 Duplicados 
+
+Se verifica la cantidad de registros y las variables del dataset, contamos con 1781 páginas web y 20 variables. También se verifica que no hayan registros duplicados y el tipo de datos que se tiene en la base de datos.
+
+```{r clean 1, echo=TRUE}
+# Limpieza de datos -------------------------------------------------------
+dim(data)
+sum(duplicated(data))
+str(data)
+
+```
+
+### 1.3 Recodificación y eliminación de variables
+
+Con el fin de poder incluir las variables categóricas en los diferentes modelos se realiza una recodificación a la variable: País, Codificación y OS
+
+```{r recode, echo=TRUE}
+# Recodificación a la variable codificación
+data$codificacion[data$codificacion %in% c("ISO-8859","iso-8859-1","ISO-8859-1","windows-1251","windows-1252")] <- "iso"
+data$codificacion[data$codificacion %in% c("UTF-8","utf-8")] <- "utf-8"
+data$codificacion[data$codificacion %in% c("None")] <- "none"
+
+# Recodificación a la variable OS
+
+data$os[grep("apache",data$os,ignore.case =T,fixed=F )] <- "apache"
+data$os[grep("ats",data$os,ignore.case =T,fixed=F )] <- "apache"
+data$os[grep("nginx",data$os,ignore.case =T,fixed=F )] <- "nginx"
+data$os[grep("None",data$os,ignore.case =T,fixed=F )] <- "none"
+data$os[grep("MICROSOFT-HTTPAPI",data$os,ignore.case =T,fixed=F )] <- "microsoft"
+data$os[grep("Microsoft-IIS",data$os,ignore.case =T,fixed=F )] <- "microsoft"
+
+data$os[ data$os %notin% c("apache", "nginx","none","microsoft") ] <- "none"
+
+# Recodificación a la variable País
 
 url_main="https://laendercode.net/es/2-letter-list.html"
 theurl=getURL(url_main,.opts = list(ssl.verifypeer = FALSE))
-Sys.sleep (0.2) 
+Sys.sleep(0.2)
+
 tables=readHTMLTable(theurl)[[1]][-1,]
 
-data$Pais <- toupper(data$Pais)
-data$Pais[tolower(data$Pais) %ni% tolower(tables$`ISO 3166 ALPHA-2`)]<-"none"
-data$Pais[data$Pais %in% names(table(data$Pais))[table(data$Pais)<=10]] <- "other" 
+data$pais <- toupper(data$pais)
+data$pais[tolower(data$pais) %notin% tolower(tables$`ISO 3166 ALPHA-2`)]<-"none"
+data$pais[data$pais %in% names(table(data$pais))[table(data$pais)<=100]] <- "Other" 
 
-table(data$Pais)
-names(data) = tolower(names(data))
+```
 
+En este caso el procedimiento a seguir fue unificar aquellos valores de las variables que tenían una escritura diferente, por ejemplo: mayúsculas, espacios, carácteres especiales. En el caso de la variable País, se recodificó con el Código ISO y se agruparon como Otros aquellos países que tenían menos de 100 registros. Para la variable OS, se tuvo en cuenta el servidor web de tal forma que se identificaron 3 de estos: Apache, Microsoft y Nginx.
+
+Las variables que no serán utilizadas en ninguno de los análisis será el ID (URL) y Estado, dado que esta variable presenta muchas categorías.
+
+De acuerdo a las características del modelo a ajustar se ajustarán los tipos de las variables, aquellas categóricas se establecen como factor y en el caso de Naive Bayes las númericas se convierten a double.
+
+### 1.4 Verificación de datos faltantes
+
+Se identifican 2 variables que contienen datos faltantes: El tamaño del encabezado, con 812 datos faltantes  y Número de paquetes DNS con 1 dato faltante. 
+
+```{r missing data}
+# Verificar datosNA
+
+# table(data$pais)
 data$os = as.factor(data$os)
 data$codificacion = as.factor(data$codificacion)
-summary(data) #La variable LargoHeader es la que m?s datos faltantes tiene
+data$pais = as.factor(data$pais)
 
-data$largoheadermissing = as.character(ifelse(is.na(data$largoheader), 1, 0))
+summary(data$largoheader)
+summary(data$numpaquetesdns)
+
+data$largoheadermissing = as.factor(ifelse(is.na(data$largoheader), 1, 0))
 data$largoheader = ifelse(is.na(data$largoheader), 0, data$largoheader)
 
 data$tipo = factor(data$tipo)
+summary(data) #La variable LargoHeader es la que más datos faltantes tiene
 
-data = data[-which(is.na(data$numpaquetesdns)),]
+```
+Dado que largoHeader es la que presenta la mayor cantidad de datos faltantes se procede a crear una nueva variable que identifica si el dato es faltante o no, y posteriormente se reemplazan los NA en por el valor de 0.
 
+En el caso de la variable  Número de paquetes DNS, se decide eliminar el registro que tiene dato faltante de la base de datos.
+
+### 1.5 Análisis exploratorio de los datos
+
+#### 1.5.1 Datos anómalos
+Para la identificación de registros anómalos se filtran las variables númericas y se procede a realizar un análisis gráfico mediante boxplot e histogramas.
+
+```{r outliers}
 data_num = data[,which(sapply(data,class) %notin% c("character", "factor"))]
 data_m = melt(data_num)
+
+a1 = ggplot(data_m, aes(variable, value))+geom_boxplot() + facet_wrap(~variable, scales = "free") + ggtitle("Con datos atípicos") + ylab("Valores")+ xlab("")
+a2 = ggplot(data_m, aes(value))+geom_histogram() + facet_wrap(~variable, scales = "free")+ ggtitle("Con datos atípicos") + ylab("Frecuencia")+ xlab("")
+
+# Análisis de datos atípicos
 
 
 atipicos = function(x,p,r){
   qnt<-mean(x, na.rm = T)
-  H <-p * sd(x, na.rm = T)
-  x2<-ifelse(x> qnt+H | x< qnt-H ,1,0)
-  
-  if(r==1){
-    pos = which(x2==T)
+ H <-p * sd(x, na.rm = T)
+ x2<-ifelse(x> qnt+H | x< qnt-H ,1,0)
+ 
+ if(r==1){
+   pos = which(x2==T)
     return(pos)
-  }else{
+ }else{
     return(sum(x2))
-  }
-  
+ }
+
 }
 
+```
+En los gráficos boxplot e histogramas se identifican varios datos atípicos, los cuales presentan valores muy superiores a los registrados en las demás observaciones. Se deciden  que una observación es atípica cuando esta es superior o inferior a 4.2 desviaciones estándar del promedio de cada variable.
+
+```{r rem outliers}
 atip = table(unlist(sapply(data_num, atipicos,4.2,1)))
+# Atípicos identificados
 atip
 pos_atip = as.numeric(names(atip)[which(atip>=5)])
+
+# Atípicos a eliminar
 pos_atip
 #Remove atipicos
 data[pos_atip,] = NA
 data = na.omit(data)
 
+
 data_num = data[,which(sapply(data,class) %notin% c("character", "factor"))]
 data_m = melt(data_num)
 
+a3 = ggplot(data_m, aes(variable, value))+geom_boxplot() + facet_wrap(~variable, scales = "free")+ ggtitle("Sin datos atípicos") + ylab("Valores")+ xlab("")
+a4 = ggplot(data_m, aes(value))+geom_histogram() + facet_wrap(~variable, scales = "free")+ ggtitle("Sin datos atípicos") + ylab("Frecuencia")+ xlab("")
+
+a1
+a3
+
+a2
+a4
+```
+
+Finalmente se identifican 8 registros que presentan valores atípicos en la mayoría de las variables y se procede a eliminarlos de la base de datos. 
+
+
+#### 1.5.2 Análisis gráfico y descriptivo
+
+Con el fin de explorar el comportamiento de algunas variables se realizarán algunos análisis gráficos y descriptivos en función de la variable que identifica como maligna o benigna una página web.
+
+```{r plot num}
+d1=ggplot(data, aes(numeroips))+ geom_density(aes(fill=tipo),alpha=0.4)+labs(fill="Tipo")
+
+d2=ggplot(data, aes(largourl))+ geom_density(aes(fill=tipo),alpha=0.4) +labs(fill="Tipo")
+
+d3=ggplot(data, aes(numpaquetesdns))+ geom_density(aes(fill=tipo),alpha=0.4)+labs(fill="Tipo") 
+
+grid.arrange(d1, d2, d3, nrow = 2)
 
 ```
+En el caso de las variables númericas se observa en los gráficos que para el largourl es más probable que una página web sea maligna cuando esta es mayor a 80. Para el caso del número de paquetes dns, se observa mayor probabilidad de tener una pág benigna cuando esta variable toma valores pequeños, menores a 1. La variable número de ip también nos ayuda a discriminar las páginas web pues aquellas que presentan valores inferiores a 6 tienden a ser malignas.
+
+```{r plot cat}
+d4 = ggplot(data, aes(codificacion))+ geom_bar(aes(fill=tipo))+labs(fill="Tipo")
+d5 = ggplot(data, aes(os))+ geom_bar(aes(fill=tipo))+labs(fill="Tipo")
+d6 = ggplot(data, aes(pais))+ geom_bar(aes(fill=tipo))+labs(fill="Tipo")
+
+grid.arrange(d4, d5, d6, nrow = 2)
+
+```
+En cuanto a las variables categóricas vemos que en todas predomina que la página web sea benigna, en el caso del país se destaca que el que la página tenga como país a Estados Unidos en su mayoría son benignas. Entre los web servers que se registraron, Apache es el que tiene mayor frecuencia de páginas web malignas. La codificación más frecuente es UTF-8 seguida de la ISO
+
+## 2. Ajuste de modelos predictivos
+
+### 2.1 Protocolo de evaluación y calibración
+
+Para el ajuste de los diferentes modelos se esteblece un 80% de los datos para entrenamiento y un 20% para el test, en la parte del entrenamiento se utilizará el método de k-fold con k=5 para la selección de los hiperparámetros de los diferentes modelos.
+
+
+### 2.2 Regresión logística
+
+Para el ajuste del modelo logístico no se tendrá en cuenta la variable codificación debido a que una de sus categorías tiene desbalance. Para la selección de las variables en el modelo se utilizará el método Stepwise Forward y el criterio AIC. Los datos que ingresan al modelo se centran y escalan para poder identificar las variables más importantes.
+
+```{r logit, results=FALSE}
+data_model = na.omit(data[, -c(1,4,8)])
+
+set.seed(500) 
+trainIndex <- createDataPartition(data_model$tipo, p = .8, list = FALSE, times = 1)
+length(trainIndex)
+
+webTrain <- data_model[ trainIndex,]
+webTest <-  data_model[-trainIndex,]
+
+model_logreg1 <- train(tipo~., webTrain, 
+                       method="glm", family="binomial",
+                       trControl=trainControl(method="cv", number=5),
+                       preProcess=c("center", "scale"))
+
+model_logreg1 
+
+
+
+
+trainControl=trainControl(method="cv", number=5)
+set.seed(123) 
+model_stepBoth <- train(tipo ~., data = data_model,
+                        method = "glmStepAIC", direction ="forward", 
+                        trControl = trainControl,
+                        preProcess=c("center", "scale"),
+                        trace=TRUE)
+
+
+
+
+```
+
+Después de realizar la selección de variables el modelo que se escogió tiene un AIC = 689.4 y 12 variables regresoras
+
+```{r logit confusion matrix}
+model_stepBoth$finalModel
+
+log = data.frame("var"= names(model_stepBoth$finalModel$coefficients)[-1], "coef"=model_stepBoth$finalModel$coefficients[-1])
+
+p <- ggplot(log, aes(x=reorder(var, coef), y=coef)) + 
+  geom_bar(stat="identity", width=.5, fill="tomato3") + 
+  labs(title= "Importancia por variable") + 
+  theme(text = element_text(size=12)) +
+  scale_x_discrete(name="Variable") + 
+  coord_flip()+ylab("Coeficientes estandarizados ")
+
+p
+
+```
+
+En el gráfico de los coeficientes estandarizados se observa que las variables más importantes para identificar si una página web es maligna o benigna son: la cantidad de puertos remotos, el número de bytes enviados y recibidos.
+
+```{r}
+# Test
+predictions_test<-predict(object=model_stepBoth, webTest)
+confusionMatrix(predictions_test, factor(webTest$tipo))$overall[1:2]
+
+# Training
+predictions<-predict(object=model_stepBoth, webTrain)
+confusionMatrix(predictions, factor(webTrain$tipo))$overall[1:2]
+
+```
+
+En cuanto a las métricas de desempeño se observa que los valores obtenidos con el set de Training y de Test son similares, también vemos que el accuracy del modelo es superior al baseline y obtenemos un kappa de 0.65 en el test set.
+
+### 2.3 Naive Bayes
+Para la construcción de este modelo el primer paso es convertir todas las variables númericas en tipo double. Para la selección de los parámetros se genera un set de posibles valores de laplace, con/sin aproximación kernel y con/sin ajuste.
+
+```{r naive}
+
+data_model_naive = na.omit(data[, -c(1,8)])
+
+set.seed(500) 
+trainIndex <- createDataPartition(data_model_naive$tipo, p = .8, list = FALSE, times = 1)
+#length(trainIndex)
+
+webTrain <- data_model_naive[ trainIndex,]
+webTest <-  data_model_naive[-trainIndex,]
+
+id= which(sapply(data_model_naive,class)!="factor")
+data_model_n = mutate_each(data_model_naive, funs(as.double), id)
+
+tgrid1 = expand.grid(laplace=c(10, 7, 6, 5, 4.5, 4, 3.5, 3, 2, 1, 0.1, 0.01, 0.001, 0.0001, 0),
+                     usekernel=c(FALSE), adjust=c(0))
+tgrid2 = expand.grid(laplace=c(10, 7, 6, 5, 4.5, 4, 3.5, 3, 2, 1, 0.1, 0.01, 0.001, 0.0001, 0),
+                     usekernel=c(TRUE), adjust=c(1))
+tgrid = rbind(tgrid1, tgrid2)
+
+
+webTrainX = webTrain[,-which(names(webTrain)=="tipo")]
+
+set.seed(123)
+model_nb5 <- train(webTrainX, webTrain$tipo,
+                   method = "naive_bayes",
+                   tuneGrid=tgrid,
+                   trControl = trainControl)
+
+
+ 
+```
+
+El modelo que mejor ajuste presentó fue aquel con laplace = 10 usando la corrección de kernel y utilizando el ajuste. Se obtuvo un accuracy de 0.83 y un kappa de 0.47 en el set de test.
+
+```{r naive confusion matrix}
+model_nb5$bestTune
+
+# Test
+predictions_test<-predict(object=model_nb5, webTest)
+ confusionMatrix(predictions_test, factor(webTest$tipo))$overall[1:2]
+
+# Training
+predictions<-predict(object=model_nb5, webTrain)
+ confusionMatrix(predictions, factor(webTrain$tipo))$overall[1:2]
+ 
+```
+
+### 2.4 Árbol de decisión
+
+Ahora procedemos a ajustar árboles de decisión tipo CART, analizaremos 3 escenarios:
+
+**Sin procesar**
+```{r sin procesar}
+
+data_model_tree = na.omit(data[, -c(1,8)])
+
+set.seed(500) 
+trainIndex <- createDataPartition(data_model_tree$tipo, p = .8, list = FALSE, times = 1)
+
+webTrain <- data_model_tree[ trainIndex,]
+webTest <-  data_model_tree[-trainIndex,]
+
+trainControl=trainControl(method="cv", number=5)
+set.seed(9876)
+model_arbol1 <- train(tipo~., webTrain, 
+                      method='rpart',
+                      trControl = trainControl)
+plot(model_arbol1)
+
+model_arbol1$bestTune
+```
+
+En este escenario se observa que el mejor parámetro de complejidad CP es cuando está en 0.0348. Para este árbol vemos que la primera variable que ayuda a segmentar las páginas web es el país Estados Unidos, seguido del número de carácteres especiales, encontrando como umbral crítico 20, es decir, para páginas web con más de 20 carácteres especiales se identifica como maligna.
+
+```{r}
+m <- model_arbol1$finalModel
+rpart.plot(m) 
+
+# Test
+predictions_test<-predict(object=model_arbol1, webTest)
+ confusionMatrix(predictions_test, factor(webTest$tipo))$overall[1:2]
+
+# Training 
+predictions<-predict(object=model_arbol1, webTrain)
+ confusionMatrix(predictions, factor(webTrain$tipo))$overall[1:2]
+
+```
+
+El accuracy de éste árbol es de 0.9 y el kappa es de 0.519
+
+**Con pre-poda**
+
+Ahora ajustaremos un árbol de decisión utilizando la pre-poda, para esto definimos un set de posibles valores para la profundidad del árbol, para este caso variamos valores de 1 hasta 30.
+
+```{r tree prepoda}
+
+data_model_tree = na.omit(data[, -c(1,8)])
+
+set.seed(500) 
+trainIndex <- createDataPartition(data_model_tree$tipo, p = .8, list = FALSE, times = 1)
+
+webTrain <- data_model_tree[ trainIndex,]
+webTest <-  data_model_tree[-trainIndex,]
+
+depths = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 18, 20, 25, 30)
+accuracies = c()
+kappas = c()
+
+for(depth in depths) {
+  set.seed(9876) # el valor de la semilla, en sí, no es importante, solo que se utilice siempre el mismo
+  grid <- data.frame(cp=c(0))
+  modelo <- train(tipo~., data = webTrain, method = "rpart",
+                   tuneGrid=grid,
+                   control = rpart.control(
+                     minsplit = 2,
+                     minbucket = 1,
+                     maxdepth=depth
+                   ))
+  predicciones <- predict(modelo, newdata=webTest) #type "raw" por defecto
+  cm <- confusionMatrix(predicciones,webTest$tipo, mode = "everything")
+  accuracies <- c(accuracies, cm$overall[1])
+  kappas <- c(kappas, cm$overall[2])
+}
+
+df <- data.frame(depth=depths, accuracy=accuracies, kappa=kappas)
+ggplot(df, aes(depth)) + 
+  geom_line(aes(y = accuracy, colour = "accuracy")) + 
+  geom_line(aes(y = kappa, colour = "kappa"))
+
+
+df[which.max(df$kappa),]
+set.seed(9876)
+ modelopoda <- train(tipo~., data = webTrain, method = "rpart",
+                   tuneGrid=grid,
+                   control = rpart.control(
+                     minsplit = 2,
+                     minbucket = 1,
+                     maxdepth=which.max(df$kappa)
+                                     ))
+
+```
+
+De acuerdo a los resultados del gráfico se identifica que el mejor accuracy se presenta cuando el árbol tiene una profundida de 8 niveles, tomando el valor de 0.94 en accuracy y 0.72 en kappa.
+
+```{r}
+ # Test
+  predicciones <- predict(modelopoda, newdata=webTest) 
+  confusionMatrix(predicciones,webTest$tipo, mode = "everything")$overall[1:2]
+  
+  # Train
+  predicciones <- predict(modelopoda, newdata=webTrain) 
+  confusionMatrix(predicciones,webTrain$tipo, mode = "everything")$overall[1:2]
+
+```
+
+**Con post-poda**
+
+Finalmente realizamos un árbol decisión con post-poda, para esto generamos un árbol sin ningún nivel de complejidad para posteriormente ajustarlo.
+```{r tree post poda}
+m2 <- rpart(tipo~., data = webTrain,
+            control = rpart.control(
+              cp=0, # sin prepoda de complejidad
+              minsplit = 2, #min instancias para intentar split de un nodo, por defecto es 20
+              minbucket = 1, #min instancias en un nodo hoja terminal, por defecto minsplit/3
+              maxdepth = 10, #max depth, por defecto es 30
+              xval=10 # rpart hace validación cruzada sobre el set de entranamiento para estimar los errores relativos
+              ))
+
+
+plotcp(m2)
+
+
+i = which.min(m2$cptable[,4])
+lim_inferior = m2$cptable[i,4] - m2$cptable[i,5]
+lim_superior = m2$cptable[i,4] + m2$cptable[i,5]
+print(paste("Intervalo de error: [", lim_inferior, ", ", lim_superior, "]"))
+
+
+
+indices = which((m2$cptable[,4] >= lim_inferior) & (m2$cptable[,4] <= lim_superior))
+indice_corte = min(indices)
+umbral_corte_cp = m2$cptable[indice_corte,1]
+umbral_corte_cp
+
+```
+
+El anterior gráfico nos sugiere que un nivel de complejidad igual a CP=0.014 nos arroja el mejor modelo.
+
+```{r}
+m2 = prune(m2, cp=umbral_corte_cp)
+rpart.plot(m2)
+
+
+# Test 
+predictions_test<-predict(object=m2, webTest, type='class')
+ confusionMatrix(predictions_test, factor(webTest$tipo))$overall[1:2]
+
+# Training
+predictions<-predict(object=m2, webTrain, type='class')
+ confusionMatrix(predictions, factor(webTrain$tipo))$overall[1:2]
+
+```
+
+También observamos que el árbol final tiene 8 niveles y que al igual que el primer árbol se observa que las 2 primeras variables de segmentación son País Estados Unidos y el número de carácteres especiales. El accuracy del modelo ajustado arroja un valor de 0.93 y un kappa de 0.65
+
+### 2.5 Modelo de ensamble: Random Forest
+
+Para el ensamble ajustaremos un Random Forest, para el ajuste de la complejidad y el número de árboles se realizan los ajustes para diferentes escenarios.
+
+```{r random f}
+data_model_tree = na.omit(data[, -c(1,8)])
+
+set.seed(500) 
+trainIndex <- createDataPartition(data_model_tree$tipo, p = .8, list = FALSE, times = 1)
+
+webTrain <- data_model_tree[ trainIndex,]
+webTest <-  data_model_tree[-trainIndex,]
+
+control <- trainControl(method='cv', 
+                        number=5, 
+                        search='grid')
+
+
+tunegrid <- expand.grid(.mtry = (1:15)) 
+
+rf_gridsearch <- train(tipo ~ ., 
+                       data = webTrain,
+                       method = 'rf',
+                       metric = 'Accuracy',
+                       tuneGrid = tunegrid)
+
+plot(rf_gridsearch)
+rf_gridsearch$bestTune
+
+```
+Para el nivel de complejidad se determina que mty=8 es el que mejor ajuste presenta. A continuación fijaremos la cantida de árboles a usar:
+
+```{r}
+# Manual Search
+seed = 456
+metric = "Accuracy"
+control <- trainControl(method="cv", number=5, repeats=1, search="grid")
+tunegrid <- expand.grid(.mtry=c(8))
+modellist <- list()
+
+for (ntree in c(500,1000, 1500, 2000)) {
+	set.seed(seed)
+	fit <- train(tipo~., data=webTrain, method="rf", metric=metric, tuneGrid=tunegrid, trControl=control, ntree=ntree)
+	key <- toString(ntree)
+	modellist[[key]] <- fit
+}
+# compare results
+results <- resamples(modellist)
+summary(results)
+dotplot(results)
+
+tunegrid <- expand.grid(.mtry=8)
+
+set.seed(seed)
+fit1 <- train(tipo~., data=webTrain, method="rf", metric=metric, tuneGrid=tunegrid, trControl=control, ntree=1500)
+
+
+```
+
+De acuerdo al gráfico se establece que el número óptimo de árboles es 1500, con esta configuración de parámetros obtenemos un accuracy de 0.96 y un kappa de 0.839. 
+
+```{r}
+# Test
+predictions_test<-predict(object=fit1, webTest)
+ confusionMatrix(predictions_test, factor(webTest$tipo))$overall[1:2]
+
+# Training
+rfs = summary(results)
+
+trf = c("Accuracy"=rfs$statistics[[1]][3,4],"Kappa"=rfs$statistics[[2]][3,4])
+
+trf
+
+mf = fit1$finalModel
+imp = data.frame("var"=rownames(importance(mf)),"value"=importance(mf))
+
+p <- ggplot(imp, aes(x=reorder(var, MeanDecreaseGini), y=MeanDecreaseGini)) + 
+  geom_bar(stat="identity", width=.5, fill="tomato3") + 
+  labs(title= "Importancia por variable- Random Forest") + 
+  theme(text = element_text(size=12)) +
+  scale_x_discrete(name="Variable") + 
+  coord_flip()+ylab("Medida de importancia ")
+
+p
+```
+En cuanto a la importancia de las variables, en este modelo, se identifica como a los puertos remotos como la variable más importante, seguido del número de paquetes enviados y el largo de la url; también se destaca que la variable que menos aporta al modelo es el tipo de codificación y el servidor web.
+
+### 2.6 Conclusión
+
+Para los diferentes modelos de clasificación ajustados se presentan las métricas del Accuracy y el Kappa tanto en el set de entrenamiento como el set de test, esto con el fin de evaluar si existe sobreajuste en los modelos escogidos.
+
+
+|  **Modelo** | **Set de datos** | **Configuración** | **Accuracy** | **Kappa** |
+| :---: | :---: | :---: | :---: | :---: |
+|  Logístico | Test | 12 variables, AIC = 689.4 | 0.93 | 0.65 |
+|   | Entrenamiento |  | 0.93 | 0.63 |
+|  Naive Bayes | Test | Laplace=10, usekernel=TRUE, adjust=1 | 0.84 | 0.47 |
+|   | Entrenamiento |  | 0.88 | 0.59 |
+|  Árbol de decisión 1 | Test | Sin procesamiento, CP= 0.0348 | 0.91 | 0.52 |
+|   | Entrenamiento |  | 0.93 | 0.63 |
+|  Árbol de decisión 2 | Test | Pre-poda, depth=8 | 0.94 | 0.72 |
+|   | Entrenamiento |  | 0.99 | 0.94 |
+|  Árbol de decisión 3 | Test | Post-poda, CP=0.014 | 0.94 | 0.66 |
+|   | Entrenamiento |  | 0.96 | 0.77 |
+|  Random Forest | Test | ntree = 1500, mtry = 8 | 0.97 | 0.84 |
+|   | Entrenamiento |  | 0.97 | 0.82 |
+
+```{r}
+setwd("D:/Master_CD/Fundamentos_1/proyecto_final")
+
+df = read.csv("resumen.csv", header = T)
+df =melt(df, id.vars = c("Modelo", "set"))
+ggplot(df, aes(Modelo,value, color=set))+ geom_point( size=2)+ coord_flip()+facet_grid(~variable)+
+  geom_hline(data=filter(df, variable=="Accuracy"), aes(yintercept=0.87), colour="black")
+
+```
+
+En conclusión, el modelo que presentó mejor desempeño para dectectar cuando una página web es beninga o maligna fue Random Forest, con un Accuracy de 0.97 y un Kappa de 0.84, además fue el modelo con el menor sobreajuste.
+
+También se destaca que la mayoría de los modelos tuvieron un Accuracy superior al baseline (0.87, línea negra) a excepción del modelo Naive Bayes, el cual fue el de peor desempeño de acuerdo a las métricas analizadas.
+
+## 3. Cambio de representación y segmentación de los casos
 
 ## 3.1 Análisis de componentes principales (ACP)
 
 El primer paso para realizar el análisis de componentes principales es verificar que las variables se encuentren correlacionadas, este procedimiento se realizó tanto para los casos malignos como para todos los casos, con el objetivo de comparar los resultados.
 
 ```{r correlación}
-library("factoextra")
-library("FactoMineR")
 
 data_3 <- cbind.data.frame(data_num,tipo=data$tipo) %>% filter(tipo==1) %>% dplyr::select(-tipo) 
 data_3_all <- cbind.data.frame(data_num,tipo=data$tipo) %>% dplyr::select(-tipo)  
@@ -183,7 +715,6 @@ kmClustering1 <- kmeans(data_3, 3, nstart=100, iter.max=150)
 kmClustering2 <- kmeans(data_3, 4, nstart=100, iter.max=150)
 kmClustering3 <- kmeans(data_3, 5, nstart=100, iter.max=150)
 
-library(gridExtra)
 
 c0 <- fviz_cluster(kmClustering0, data_3, geom="point")#labelsize = 5)
 c1 <- fviz_cluster(kmClustering1, data_3, geom="point")#labelsize = 5)
@@ -241,7 +772,6 @@ En este caso tenemos un codo muy evidente donde a partir del clúster número 3 
 #### 3.2.1.2 Método de Calinski-Harabasz
 
 ```{r  Calinski}
-library(fpc)
 
 set.seed(11111)
 kmClusteringRuns.ch <- kmeansruns(data_3, krange=1:10, criterion="ch")
@@ -261,8 +791,6 @@ Encontramos que según el criterio Calinski Harabasz el mejor particionamiento e
 #### 3.2.1.3 Método de la silueta
 
 ```{r silueata}
-
-library(cluster)
 
 distancias <- dist(data_3)
 
